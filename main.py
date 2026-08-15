@@ -1,7 +1,7 @@
 import os
 import sqlite3
 import threading
-import requests
+from werkzeug.utils import secure_filename
 from flask import Flask, request, redirect, url_for, render_template_string, flash
 import cloudinary
 import cloudinary.uploader
@@ -23,6 +23,8 @@ cloudinary.config(
 app = Flask(__name__)
 app.secret_key = "jiobharat_opera_super_secret_key"
 DB_NAME = "videos.db"
+UPLOAD_FOLDER = "temp_uploads"
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 # ================= DATABASE SETUP & AUTO-SYNC =================
 def init_db():
@@ -55,9 +57,7 @@ def sync_from_cloudinary():
         
         for item in resources:
             pub_id = item.get("public_id")
-            # JioBharat ke liye direct download URL
             dl_url = f"https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/video/upload/w_360,c_scale,q_auto:eco,fl_attachment/{pub_id}.mp4"
-            # Title clean-up
             clean_title = pub_id.split("/")[-1].replace("_", " ")
             
             cur.execute("""
@@ -70,24 +70,15 @@ def sync_from_cloudinary():
     except Exception as e:
         print(f"Cloudinary sync error: {e}")
 
-# Database initialize aur Cloudinary se purana data sync karein
 init_db()
 sync_from_cloudinary()
 
-# ================= BACKGROUND DOWNLOAD & LARGE CHUNK UPLOAD =================
-def process_video_background(source_url, video_title):
-    temp_file = f"temp_{os.getpid()}_{threading.get_ident()}.mp4"
+# ================= BACKGROUND LOCAL FILE UPLOAD =================
+def process_file_upload_background(file_path, video_title):
     try:
-        # Step 1: Direct link se stream download (1MB buffer)
-        res = requests.get(source_url, stream=True, timeout=300)
-        with open(temp_file, "wb") as f:
-            for chunk in res.iter_content(chunk_size=1024 * 1024):
-                if chunk:
-                    f.write(chunk)
-
-        # Step 2: 100MB+ safe chunk upload (6MB chunks) with Eager Transformation
+        # Cloudinary Chunk Upload with Auto 360p Downscaling & Attachment Flag
         upload_data = cloudinary.uploader.upload_large(
-            temp_file,
+            file_path,
             resource_type="video",
             chunk_size=6000000,
             eager=[
@@ -103,11 +94,9 @@ def process_video_background(source_url, video_title):
         )
 
         pub_id = upload_data.get("public_id")
-        
-        # Attachment link for instant download
         final_url = f"https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/video/upload/w_360,c_scale,q_auto:eco,fl_attachment/{pub_id}.mp4"
 
-        # Step 3: SQLite DB mein save
+        # SQLite DB save
         conn = sqlite3.connect(DB_NAME)
         cur = conn.cursor()
         cur.execute(
@@ -119,10 +108,10 @@ def process_video_background(source_url, video_title):
     except Exception as err:
         print(f"Background upload error: {err}")
     finally:
-        if os.path.exists(temp_file):
-            os.remove(temp_file)
+        if os.path.exists(file_path):
+            os.remove(file_path)
 
-# ================= HTML TEMPLATES (NO JAVASCRIPT / OPERA MINI COMPLIANT) =================
+# ================= HTML TEMPLATES (PURE HTML / OPERA MINI COMPLIANT) =================
 
 HOME_PAGE = """
 <!DOCTYPE html>
@@ -203,7 +192,7 @@ ADMIN_PAGE = """
         h3 { text-align: center; margin-top: 0; }
         .field { margin-bottom: 12px; }
         label { display: block; font-size: 13px; font-weight: bold; margin-bottom: 4px; }
-        input[type="text"], input[type="password"], input[type="url"] { width: 100%; padding: 8px; box-sizing: border-box; font-size: 14px; border: 1px solid #aaa; }
+        input[type="text"], input[type="password"], input[type="file"] { width: 100%; padding: 8px; box-sizing: border-box; font-size: 14px; border: 1px solid #aaa; }
         .btn-ok { width: 100%; background: #007bff; color: #fff; padding: 10px; border: none; font-size: 16px; font-weight: bold; cursor: pointer; }
         .alert { padding: 8px; margin-bottom: 12px; font-size: 13px; text-align: center; }
         .err { background: #f8d7da; color: #721c24; }
@@ -213,7 +202,7 @@ ADMIN_PAGE = """
 </head>
 <body>
     <div class="box">
-        <h3>Upload Video Panel</h3>
+        <h3>Upload Video From Storage</h3>
         {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}
                 {% for cat, msg in messages %}
@@ -221,17 +210,17 @@ ADMIN_PAGE = """
                 {% endfor %}
             {% endif %}
         {% endwith %}
-        <form method="POST">
+        <form method="POST" enctype="multipart/form-data">
             <div class="field">
-                <label>Direct Video URL:</label>
-                <input type="url" name="url" placeholder="https://example.com/video.mp4" required>
+                <label>Choose Video File (from phone):</label>
+                <input type="file" name="video_file" accept="video/*" required>
             </div>
             <div class="field">
-                <label>Video Name:</label>
+                <label>Video Name / Title:</label>
                 <input type="text" name="name" placeholder="Enter video name" required>
             </div>
             <div class="field">
-                <label>Password:</label>
+                <label>Admin Password:</label>
                 <input type="password" name="password" placeholder="Enter Admin Password" required>
             </div>
             <input type="submit" value="OK" class="btn-ok">
@@ -319,7 +308,7 @@ def sync_videos():
 @app.route("/admin", methods=["GET", "POST"])
 def admin_panel():
     if request.method == "POST":
-        url = request.form.get("url", "").strip()
+        file = request.files.get("video_file")
         name = request.form.get("name", "").strip()
         password = request.form.get("password", "").strip()
 
@@ -327,15 +316,21 @@ def admin_panel():
             flash("Incorrect Password!", "err")
             return render_template_string(ADMIN_PAGE)
 
-        if not url or not name:
-            flash("All fields are required!", "err")
+        if not file or file.filename == "" or not name:
+            flash("File and Video Name are both required!", "err")
             return render_template_string(ADMIN_PAGE)
 
-        th = threading.Thread(target=process_video_background, args=(url, name))
+        # Temporary phone/storage save
+        safe_name = secure_filename(file.filename)
+        saved_path = os.path.join(UPLOAD_FOLDER, f"up_{os.getpid()}_{safe_name}")
+        file.save(saved_path)
+
+        # Background chunk upload start
+        th = threading.Thread(target=process_file_upload_background, args=(saved_path, name))
         th.daemon = True
         th.start()
 
-        flash("Download & Large Chunk Upload shuru ho gaya hai. Thodi der mein video show ho jayegi.", "succ")
+        flash("Video storage se upload hona shuru ho gayi hai! Thodi der me home page par dikh jayegi.", "succ")
 
     return render_template_string(ADMIN_PAGE)
 
