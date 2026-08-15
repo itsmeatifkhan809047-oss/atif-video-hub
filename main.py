@@ -95,8 +95,9 @@ HOME_PAGE = """
         .search-container { background: #fff; border: 1px solid #bbb; padding: 10px; margin-bottom: 12px; text-align: center; }
         .search-input { width: 65%; padding: 6px; font-size: 14px; border: 1px solid #999; }
         .search-btn { padding: 6px 12px; font-size: 14px; background: #0b5ed7; color: #fff; border: 1px solid #0a58ca; font-weight: bold; }
-        .video-card { background: #fff; border: 1px solid #ccc; padding: 10px; margin-bottom: 10px; }
-        .video-title { font-size: 15px; font-weight: bold; margin-bottom: 8px; color: #111; word-wrap: break-word; }
+        .video-card { background: #fff; border: 1px solid #ccc; padding: 10px; margin-bottom: 12px; text-align: center; }
+        .thumb-img { width: 100%; max-height: 180px; object-fit: cover; background: #000; display: block; margin-bottom: 8px; border: 1px solid #eee; }
+        .video-title { font-size: 15px; font-weight: bold; margin-bottom: 8px; color: #111; word-wrap: break-word; text-align: left; }
         .btn-download { display: block; background: #198754; color: #ffffff; text-align: center; padding: 9px 0; text-decoration: none; font-size: 15px; font-weight: bold; margin-bottom: 6px; }
         .action-row { width: 100%; }
         .btn-action { display: inline-block; width: 48%; text-align: center; padding: 6px 0; text-decoration: none; font-size: 13px; font-weight: bold; }
@@ -121,6 +122,7 @@ HOME_PAGE = """
 
     {% for vid in videos %}
     <div class="video-card">
+        <img src="https://res.cloudinary.com/dmzqlfd9s/video/upload/w_320,h_180,c_fill,so_0,q_auto:eco/{{ vid[3] }}.jpg" alt="Thumbnail" class="thumb-img">
         <div class="video-title">{{ vid[1] }}</div>
         <a href="{{ vid[2] }}" class="btn-download">DOWNLOAD</a>
         <div class="action-row">
@@ -248,12 +250,12 @@ def home():
 
     if query:
         cur.execute(
-            "SELECT id, title, download_url FROM videos WHERE title LIKE ? ORDER BY id DESC LIMIT ? OFFSET ?",
+            "SELECT id, title, download_url, public_id FROM videos WHERE title LIKE ? ORDER BY id DESC LIMIT ? OFFSET ?",
             (f"%{query}%", limit + 1, offset)
         )
     else:
         cur.execute(
-            "SELECT id, title, download_url FROM videos ORDER BY id DESC LIMIT ? OFFSET ?",
+            "SELECT id, title, download_url, public_id FROM videos ORDER BY id DESC LIMIT ? OFFSET ?",
             (limit + 1, offset)
         )
 
@@ -350,7 +352,5 @@ def delete_video(video_id):
 
 # ================= RENDER & PRODUCTION ENTRY POINT =================
 if __name__ == "__main__":
-    # Render default port 10000 ya dynamic assigned port catch karega
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
-
