@@ -40,21 +40,22 @@ def init_db():
 
 init_db()
 
-# ================= BACKGROUND DOWNLOAD & UPLOAD =================
+# ================= BACKGROUND DOWNLOAD & CHUNKED UPLOAD =================
 def process_video_background(source_url, video_title):
     temp_file = f"temp_{os.getpid()}_{threading.get_ident()}.mp4"
     try:
-        # Step 1: Direct link se stream download
-        res = requests.get(source_url, stream=True, timeout=120)
+        # Step 1: Direct link se stream chunk download (1MB per chunk)
+        res = requests.get(source_url, stream=True, timeout=180)
         with open(temp_file, "wb") as f:
             for chunk in res.iter_content(chunk_size=1024 * 1024):
                 if chunk:
                     f.write(chunk)
 
-        # Step 2: Cloudinary par low-resolution (JioBharat) + auto-download flag ke sath upload
+        # Step 2: Cloudinary Chunk Upload (6MB per chunk) + JioBharat Low Res Auto Convert
         upload_data = cloudinary.uploader.upload_large(
             temp_file,
             resource_type="video",
+            chunk_size=6000000,  # 6 MB ke tukdon (chunks) me upload karega
             transformation=[
                 {"width": 360, "crop": "scale"},
                 {"quality": "auto:eco"},
@@ -286,7 +287,7 @@ def admin_panel():
         th.daemon = True
         th.start()
 
-        flash("Download & Upload background mein shuru ho gaya hai. Thodi der mein Home page par show ho jayega.", "succ")
+        flash("Download & Chunked Upload background mein shuru ho gaya hai. Thodi der mein Home page par show ho jayega.", "succ")
 
     return render_template_string(ADMIN_PAGE)
 
