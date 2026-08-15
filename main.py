@@ -5,6 +5,7 @@ import requests
 from flask import Flask, request, redirect, url_for, render_template_string, flash
 import cloudinary
 import cloudinary.uploader
+import cloudinary.api
 
 # ================= CREDENTIALS CONFIGURATION =================
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "809047")
@@ -23,7 +24,7 @@ app = Flask(__name__)
 app.secret_key = "jiobharat_opera_super_secret_key"
 DB_NAME = "videos.db"
 
-# ================= DATABASE SETUP =================
+# ================= DATABASE SETUP & AUTO-SYNC =================
 def init_db():
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
@@ -32,45 +33,85 @@ def init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             title TEXT NOT NULL,
             download_url TEXT NOT NULL,
-            public_id TEXT NOT NULL
+            public_id TEXT NOT NULL UNIQUE
         )
     """)
     conn.commit()
     conn.close()
 
-init_db()
+def sync_from_cloudinary():
+    """Cloudinary se saari purani uploaded videos fetch karke DB me sync karta hai"""
+    try:
+        init_db()
+        result = cloudinary.api.resources(
+            resource_type="video",
+            type="upload",
+            max_results=500
+        )
+        resources = result.get("resources", [])
+        
+        conn = sqlite3.connect(DB_NAME)
+        cur = conn.cursor()
+        
+        for item in resources:
+            pub_id = item.get("public_id")
+            # JioBharat ke liye direct download URL
+            dl_url = f"https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/video/upload/w_360,c_scale,q_auto:eco,fl_attachment/{pub_id}.mp4"
+            # Title clean-up
+            clean_title = pub_id.split("/")[-1].replace("_", " ")
+            
+            cur.execute("""
+                INSERT OR IGNORE INTO videos (title, download_url, public_id)
+                VALUES (?, ?, ?)
+            """, (clean_title, dl_url, pub_id))
+            
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"Cloudinary sync error: {e}")
 
-# ================= BACKGROUND DOWNLOAD & CHUNKED UPLOAD =================
+# Database initialize aur Cloudinary se purana data sync karein
+init_db()
+sync_from_cloudinary()
+
+# ================= BACKGROUND DOWNLOAD & LARGE CHUNK UPLOAD =================
 def process_video_background(source_url, video_title):
     temp_file = f"temp_{os.getpid()}_{threading.get_ident()}.mp4"
     try:
-        # Step 1: Direct link se stream chunk download (1MB per chunk)
-        res = requests.get(source_url, stream=True, timeout=180)
+        # Step 1: Direct link se stream download (1MB buffer)
+        res = requests.get(source_url, stream=True, timeout=300)
         with open(temp_file, "wb") as f:
             for chunk in res.iter_content(chunk_size=1024 * 1024):
                 if chunk:
                     f.write(chunk)
 
-        # Step 2: Cloudinary Chunk Upload (6MB per chunk) + JioBharat Low Res Auto Convert
+        # Step 2: 100MB+ safe chunk upload (6MB chunks) with Eager Transformation
         upload_data = cloudinary.uploader.upload_large(
             temp_file,
             resource_type="video",
-            chunk_size=6000000,  # 6 MB ke tukdon (chunks) me upload karega
-            transformation=[
-                {"width": 360, "crop": "scale"},
-                {"quality": "auto:eco"},
-                {"flags": "attachment"}
-            ]
+            chunk_size=6000000,
+            eager=[
+                {
+                    "width": 360,
+                    "crop": "scale",
+                    "quality": "auto:eco",
+                    "flags": "attachment",
+                    "format": "mp4"
+                }
+            ],
+            eager_async=False
         )
 
-        final_url = upload_data.get("secure_url")
         pub_id = upload_data.get("public_id")
+        
+        # Attachment link for instant download
+        final_url = f"https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/video/upload/w_360,c_scale,q_auto:eco,fl_attachment/{pub_id}.mp4"
 
         # Step 3: SQLite DB mein save
         conn = sqlite3.connect(DB_NAME)
         cur = conn.cursor()
         cur.execute(
-            "INSERT INTO videos (title, download_url, public_id) VALUES (?, ?, ?)",
+            "INSERT OR REPLACE INTO videos (title, download_url, public_id) VALUES (?, ?, ?)",
             (video_title, final_url, pub_id)
         )
         conn.commit()
@@ -93,6 +134,7 @@ HOME_PAGE = """
         body { font-family: Arial, sans-serif; background: #e5e5e5; margin: 0; padding: 8px; }
         .top-bar { text-align: right; margin-bottom: 12px; }
         .admin-link { background: #222; color: #fff; padding: 6px 12px; text-decoration: none; font-size: 13px; font-weight: bold; border-radius: 3px; }
+        .sync-link { background: #007bff; color: #fff; padding: 6px 10px; text-decoration: none; font-size: 13px; font-weight: bold; border-radius: 3px; margin-right: 5px; }
         .search-container { background: #fff; border: 1px solid #bbb; padding: 10px; margin-bottom: 12px; text-align: center; }
         .search-input { width: 65%; padding: 6px; font-size: 14px; border: 1px solid #999; }
         .search-btn { padding: 6px 12px; font-size: 14px; background: #0b5ed7; color: #fff; border: 1px solid #0a58ca; font-weight: bold; }
@@ -111,6 +153,7 @@ HOME_PAGE = """
 </head>
 <body>
     <div class="top-bar">
+        <a href="{{ url_for('sync_videos') }}" class="sync-link">&#8635; Refresh Videos</a>
         <a href="{{ url_for('admin_panel') }}" class="admin-link">Admin Upload</a>
     </div>
 
@@ -268,6 +311,11 @@ def home():
 
     return render_template_string(HOME_PAGE, videos=videos, query=query, page=page, has_next=has_next)
 
+@app.route("/sync")
+def sync_videos():
+    sync_from_cloudinary()
+    return redirect(url_for("home"))
+
 @app.route("/admin", methods=["GET", "POST"])
 def admin_panel():
     if request.method == "POST":
@@ -287,7 +335,7 @@ def admin_panel():
         th.daemon = True
         th.start()
 
-        flash("Download & Chunked Upload background mein shuru ho gaya hai. Thodi der mein Home page par show ho jayega.", "succ")
+        flash("Download & Large Chunk Upload shuru ho gaya hai. Thodi der mein video show ho jayegi.", "succ")
 
     return render_template_string(ADMIN_PAGE)
 
