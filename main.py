@@ -1,7 +1,8 @@
 import os
 import time
 import sqlite3
-from flask import Flask, request, redirect, url_for, render_template_string, flash, jsonify
+import requests
+from flask import Flask, request, redirect, url_for, render_template_string, flash, jsonify, Response, stream_with_context
 import cloudinary
 import cloudinary.uploader
 import cloudinary.api
@@ -9,9 +10,15 @@ import cloudinary.utils
 
 # ================= CREDENTIALS CONFIGURATION =================
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "809047")
+
+# Cloudinary Setup
 CLOUDINARY_CLOUD_NAME = os.environ.get("CLOUDINARY_CLOUD_NAME", "dmzqlfd9s")
 CLOUDINARY_API_KEY = os.environ.get("CLOUDINARY_API_KEY", "884785368881513")
 CLOUDINARY_API_SECRET = os.environ.get("CLOUDINARY_API_SECRET", "t2JjczLpiFQw2OnW_vbvjbdLwEg")
+
+# Telegram Hybrid Setup
+TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "8602597489:AAFuKRb3s-y8-l7XZwDSQqGDcZgJmHq_Y5U")
+TELEGRAM_CHANNEL_ID = os.environ.get("TELEGRAM_CHANNEL_ID", "-1004321125737")
 
 cloudinary.config(
     cloud_name=CLOUDINARY_CLOUD_NAME,
@@ -33,7 +40,9 @@ def init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             title TEXT NOT NULL,
             download_url TEXT NOT NULL,
-            public_id TEXT NOT NULL UNIQUE
+            public_id TEXT NOT NULL UNIQUE,
+            storage_type TEXT DEFAULT 'cloudinary',
+            thumb_url TEXT DEFAULT ''
         )
     """)
     conn.commit()
@@ -56,12 +65,13 @@ def sync_from_cloudinary():
         for item in resources:
             pub_id = item.get("public_id")
             dl_url = f"https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/video/upload/w_360,c_scale,q_auto:eco,fl_attachment/{pub_id}.mp4"
+            thumb_url = f"https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/video/upload/w_320,h_180,c_fill,so_0,q_auto:eco/{pub_id}.jpg"
             clean_title = pub_id.split("/")[-1].replace("_", " ")
             
             cur.execute("""
-                INSERT OR IGNORE INTO videos (title, download_url, public_id)
-                VALUES (?, ?, ?)
-            """, (clean_title, dl_url, pub_id))
+                INSERT OR IGNORE INTO videos (title, download_url, public_id, storage_type, thumb_url)
+                VALUES (?, ?, ?, 'cloudinary', ?)
+            """, (clean_title, dl_url, pub_id, thumb_url))
             
         conn.commit()
         conn.close()
@@ -71,7 +81,7 @@ def sync_from_cloudinary():
 init_db()
 sync_from_cloudinary()
 
-# ================= HTML TEMPLATES (NO JAVASCRIPT FOR OPERA MINI) =================
+# ================= HTML TEMPLATES (PURE HTML / OPERA MINI COMPLIANT) =================
 
 HOME_PAGE = """
 <!DOCTYPE html>
@@ -115,9 +125,13 @@ HOME_PAGE = """
 
     {% for vid in videos %}
     <div class="video-card">
-        <img src="https://res.cloudinary.com/dmzqlfd9s/video/upload/w_320,h_180,c_fill,so_0,q_auto:eco/{{ vid[3] }}.jpg" alt="Thumbnail" class="thumb-img">
+        <img src="{{ vid[4] if vid[4] else 'https://res.cloudinary.com/dmzqlfd9s/video/upload/w_320,h_180,c_fill,so_0,q_auto:eco/' + vid[3] + '.jpg' }}" alt="Thumbnail" class="thumb-img">
         <div class="video-title">{{ vid[1] }}</div>
-        <a href="{{ vid[2] }}" class="btn-download">DOWNLOAD</a>
+        {% if vid[5] == 'telegram' %}
+            <a href="{{ url_for('download_telegram_video', video_id=vid[0]) }}" class="btn-download">DOWNLOAD</a>
+        {% else %}
+            <a href="{{ vid[2] }}" class="btn-download">DOWNLOAD</a>
+        {% endif %}
         <div class="action-row">
             <a href="{{ url_for('rename_video', video_id=vid[0]) }}" class="btn-action btn-rename">Rename</a>
             <a href="{{ url_for('delete_video', video_id=vid[0]) }}" class="btn-action btn-delete">Delete</a>
@@ -183,7 +197,7 @@ ADMIN_PAGE = """
                 <label>Admin Password:</label>
                 <input type="password" id="admin_pass" placeholder="Enter Admin Password" required>
             </div>
-            <input type="button" id="submitBtn" value="OK" class="btn-ok" onclick="startDirectUpload()">
+            <input type="button" id="submitBtn" value="OK" class="btn-ok" onclick="startHybridUpload()">
         </form>
 
         <div id="progressBox" class="progress-box">
@@ -194,14 +208,14 @@ ADMIN_PAGE = """
             <div class="progress-track">
                 <div id="progressFill" class="progress-fill"></div>
             </div>
-            <div id="statusText" class="status-text">Starting high-speed upload...</div>
+            <div id="statusText" class="status-text">Starting upload...</div>
         </div>
 
         <a href="{{ url_for('home') }}" class="back">&larr; Back to Videos</a>
     </div>
 
     <script>
-        async function startDirectUpload() {
+        async function startHybridUpload() {
             const fileInput = document.getElementById('video_file');
             const nameInput = document.getElementById('video_name');
             const passInput = document.getElementById('admin_pass');
@@ -217,96 +231,132 @@ ADMIN_PAGE = """
                 alertBox.style.display = 'block';
                 alertBox.style.background = '#f8d7da';
                 alertBox.style.color = '#721c24';
-                alertBox.innerText = 'Please choose a file and fill all fields!';
+                alertBox.innerText = 'Please select a file and fill all fields!';
                 return;
             }
 
             const file = fileInput.files[0];
             const videoTitle = nameInput.value.trim();
             const password = passInput.value.trim();
+            const isLarge = file.size > (95 * 1024 * 1024); // > 95MB routes to Telegram
 
             submitBtn.disabled = true;
             alertBox.style.display = 'none';
             progressBox.style.display = 'block';
             progressFill.style.width = '0%';
             percentText.innerText = '0%';
-            statusText.innerText = 'Authenticating with cloud...';
 
             try {
-                // Step 1: Get signature from Render backend
-                const signRes = await fetch('{{ url_for("get_upload_params") }}', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ password: password })
-                });
-                const signData = await signRes.json();
+                if (isLarge) {
+                    // Telegram Pipeline (>95MB up to 2GB)
+                    statusText.innerText = 'Routing to Telegram Cloud (>95MB)...';
+                    const formData = new FormData();
+                    formData.append('video_file', file);
+                    formData.append('title', videoTitle);
+                    formData.append('password', password);
 
-                if (signData.status !== 'success') {
-                    throw new Error(signData.message || 'Authentication failed!');
-                }
+                    const xhr = new XMLHttpRequest();
+                    xhr.open('POST', '{{ url_for("upload_telegram") }}', true);
 
-                // Step 2: Direct Upload to Cloudinary (Bypasses Render completely - No Timeout)
-                const formData = new FormData();
-                formData.append('file', file);
-                formData.append('api_key', signData.api_key);
-                formData.append('timestamp', signData.timestamp);
-                formData.append('signature', signData.signature);
-                formData.append('eager', signData.eager);
-
-                const xhr = new XMLHttpRequest();
-                xhr.open('POST', `https://api.cloudinary.com/v1_1/${signData.cloud_name}/video/upload`, true);
-
-                xhr.upload.onprogress = function(e) {
-                    if (e.lengthComputable) {
-                        const percent = Math.round((e.loaded / e.total) * 100);
-                        progressFill.style.width = percent + '%';
-                        percentText.innerText = percent + '%';
-                        const loadedMB = (e.loaded / (1024 * 1024)).toFixed(2);
-                        const totalMB = (e.total / (1024 * 1024)).toFixed(2);
-                        statusText.innerText = `Uploading: ${loadedMB} MB / ${totalMB} MB`;
-                    }
-                };
-
-                xhr.onload = async function() {
-                    if (xhr.status === 200) {
-                        const cloudRes = JSON.parse(xhr.responseText);
-                        procLabel.innerText = 'Saving...';
-                        statusText.innerText = 'Upload 100%! Saving video to portal...';
-
-                        // Step 3: Save metadata to website database
-                        const saveRes = await fetch('{{ url_for("save_video") }}', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                password: password,
-                                title: videoTitle,
-                                public_id: cloudRes.public_id
-                            })
-                        });
-                        const saveData = await saveRes.json();
-
-                        if (saveData.status === 'success') {
-                            alertBox.style.display = 'block';
-                            alertBox.style.background = '#d1e7dd';
-                            alertBox.style.color = '#0f5132';
-                            alertBox.innerText = 'Video Uploaded and Saved Successfully!';
-                            document.getElementById('uploadForm').reset();
-                            statusText.innerText = 'Complete!';
-                        } else {
-                            throw new Error(saveData.message);
+                    xhr.upload.onprogress = function(e) {
+                        if (e.lengthComputable) {
+                            const percent = Math.round((e.loaded / e.total) * 100);
+                            progressFill.style.width = percent + '%';
+                            percentText.innerText = percent + '%';
+                            const loadedMB = (e.loaded / (1024 * 1024)).toFixed(2);
+                            const totalMB = (e.total / (1024 * 1024)).toFixed(2);
+                            statusText.innerText = `Uploading to Telegram: ${loadedMB} MB / ${totalMB} MB`;
                         }
-                    } else {
-                        throw new Error('Cloud upload failed! Status: ' + xhr.status);
+                    };
+
+                    xhr.onload = function() {
+                        submitBtn.disabled = false;
+                        if (xhr.status === 200) {
+                            const res = JSON.parse(xhr.responseText);
+                            if (res.status === 'success') {
+                                alertBox.style.display = 'block';
+                                alertBox.style.background = '#d1e7dd';
+                                alertBox.style.color = '#0f5132';
+                                alertBox.innerText = 'Large Video Saved Successfully via Telegram Cloud!';
+                                document.getElementById('uploadForm').reset();
+                                statusText.innerText = 'Completed 100%';
+                            } else {
+                                throw new Error(res.message);
+                            }
+                        } else {
+                            throw new Error('Telegram upload failed!');
+                        }
+                    };
+                    xhr.send(formData);
+
+                } else {
+                    // Cloudinary Direct Pipeline (<= 95MB)
+                    statusText.innerText = 'Authenticating Cloudinary...';
+                    const signRes = await fetch('{{ url_for("get_upload_params") }}', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ password: password })
+                    });
+                    const signData = await signRes.json();
+
+                    if (signData.status !== 'success') {
+                        throw new Error(signData.message || 'Auth failed!');
                     }
-                    submitBtn.disabled = false;
-                };
 
-                xhr.onerror = function() {
-                    throw new Error('Network error during upload to cloud.');
-                };
+                    const formData = new FormData();
+                    formData.append('file', file);
+                    formData.append('api_key', signData.api_key);
+                    formData.append('timestamp', signData.timestamp);
+                    formData.append('signature', signData.signature);
+                    formData.append('eager', signData.eager);
 
-                xhr.send(formData);
+                    const xhr = new XMLHttpRequest();
+                    xhr.open('POST', `https://api.cloudinary.com/v1_1/${signData.cloud_name}/video/upload`, true);
 
+                    xhr.upload.onprogress = function(e) {
+                        if (e.lengthComputable) {
+                            const percent = Math.round((e.loaded / e.total) * 100);
+                            progressFill.style.width = percent + '%';
+                            percentText.innerText = percent + '%';
+                            const loadedMB = (e.loaded / (1024 * 1024)).toFixed(2);
+                            const totalMB = (e.total / (1024 * 1024)).toFixed(2);
+                            statusText.innerText = `Uploading: ${loadedMB} MB / ${totalMB} MB`;
+                        }
+                    };
+
+                    xhr.onload = async function() {
+                        if (xhr.status === 200) {
+                            const cloudRes = JSON.parse(xhr.responseText);
+                            statusText.innerText = 'Saving to portal...';
+
+                            const saveRes = await fetch('{{ url_for("save_video") }}', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    password: password,
+                                    title: videoTitle,
+                                    public_id: cloudRes.public_id
+                                })
+                            });
+                            const saveData = await saveRes.json();
+
+                            if (saveData.status === 'success') {
+                                alertBox.style.display = 'block';
+                                alertBox.style.background = '#d1e7dd';
+                                alertBox.style.color = '#0f5132';
+                                alertBox.innerText = 'Video Uploaded and Saved Successfully!';
+                                document.getElementById('uploadForm').reset();
+                                statusText.innerText = 'Completed 100%';
+                            } else {
+                                throw new Error(saveData.message);
+                            }
+                        } else {
+                            throw new Error('Cloudinary upload failed!');
+                        }
+                        submitBtn.disabled = false;
+                    };
+                    xhr.send(formData);
+                }
             } catch (err) {
                 submitBtn.disabled = false;
                 alertBox.style.display = 'block';
@@ -373,12 +423,12 @@ def home():
 
     if query:
         cur.execute(
-            "SELECT id, title, download_url, public_id FROM videos WHERE title LIKE ? ORDER BY id DESC LIMIT ? OFFSET ?",
+            "SELECT id, title, download_url, public_id, thumb_url, storage_type FROM videos WHERE title LIKE ? ORDER BY id DESC LIMIT ? OFFSET ?",
             (f"%{query}%", limit + 1, offset)
         )
     else:
         cur.execute(
-            "SELECT id, title, download_url, public_id FROM videos ORDER BY id DESC LIMIT ? OFFSET ?",
+            "SELECT id, title, download_url, public_id, thumb_url, storage_type FROM videos ORDER BY id DESC LIMIT ? OFFSET ?",
             (limit + 1, offset)
         )
 
@@ -438,17 +488,79 @@ def save_video():
         return jsonify({"status": "error", "message": "Title and public_id are required!"}), 400
 
     download_url = f"https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/video/upload/w_360,c_scale,q_auto:eco,fl_attachment/{public_id}.mp4"
+    thumb_url = f"https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/video/upload/w_320,h_180,c_fill,so_0,q_auto:eco/{public_id}.jpg"
 
     conn = sqlite3.connect(DB_NAME)
     cur = conn.cursor()
     cur.execute(
-        "INSERT OR REPLACE INTO videos (title, download_url, public_id) VALUES (?, ?, ?)",
-        (title, download_url, public_id)
+        "INSERT OR REPLACE INTO videos (title, download_url, public_id, storage_type, thumb_url) VALUES (?, ?, ?, 'cloudinary', ?)",
+        (title, download_url, public_id, thumb_url)
     )
     conn.commit()
     conn.close()
 
     return jsonify({"status": "success", "message": "Video registered successfully!"})
+
+@app.route("/upload_telegram", methods=["POST"])
+def upload_telegram():
+    password = request.form.get("password", "")
+    title = request.form.get("title", "").strip()
+    file = request.files.get("video_file")
+
+    if password != ADMIN_PASSWORD:
+        return jsonify({"status": "error", "message": "Incorrect Admin Password!"}), 403
+
+    if not file or not title:
+        return jsonify({"status": "error", "message": "File and title required!"}), 400
+
+    try:
+        tg_url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendDocument"
+        files = {"document": (file.filename, file.stream, file.mimetype)}
+        data = {"chat_id": TELEGRAM_CHANNEL_ID, "caption": title}
+
+        res = requests.post(tg_url, files=files, data=data, timeout=300).json()
+        if not res.get("ok"):
+            return jsonify({"status": "error", "message": res.get("description", "Telegram Error")}), 500
+
+        doc = res["result"].get("document") or res["result"].get("video")
+        file_id = doc["file_id"]
+        
+        # Default placeholder thumbnail for Opera/JioBharat
+        thumb_url = "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=320&h=180&fit=crop"
+
+        conn = sqlite3.connect(DB_NAME)
+        cur = conn.cursor()
+        cur.execute(
+            "INSERT OR REPLACE INTO videos (title, download_url, public_id, storage_type, thumb_url) VALUES (?, ?, ?, 'telegram', ?)",
+            (title, f"/download_tg/{file_id}", file_id, thumb_url)
+        )
+        conn.commit()
+        conn.close()
+
+        return jsonify({"status": "success", "message": "Telegram upload complete!"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route("/download_tg/<path:file_id>")
+def download_telegram_video(file_id):
+    """Direct stream from Telegram without opening Telegram app"""
+    try:
+        # Step 1: Get file path from Telegram
+        info_res = requests.get(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getFile?file_id={file_id}").json()
+        if not info_res.get("ok"):
+            return "File fetch failed", 404
+
+        file_path = info_res["result"]["file_path"]
+        download_stream_url = f"https://api.telegram.org/file/bot{TELEGRAM_BOT_TOKEN}/{file_path}"
+
+        req = requests.get(download_stream_url, stream=True)
+        return Response(
+            stream_with_context(req.iter_content(chunk_size=1024 * 1024)),
+            content_type="video/mp4",
+            headers={"Content-Disposition": f"attachment; filename=video_{file_id[:8]}.mp4"}
+        )
+    except Exception as e:
+        return f"Download error: {e}", 500
 
 @app.route("/rename/<int:video_id>", methods=["GET", "POST"])
 def rename_video(video_id):
@@ -482,7 +594,7 @@ def rename_video(video_id):
 def delete_video(video_id):
     conn = sqlite3.connect(DB_NAME)
     cur = conn.cursor()
-    cur.execute("SELECT id, title, public_id FROM videos WHERE id = ?", (video_id,))
+    cur.execute("SELECT id, title, public_id, storage_type FROM videos WHERE id = ?", (video_id,))
     video = cur.fetchone()
     conn.close()
 
@@ -496,10 +608,11 @@ def delete_video(video_id):
             flash("Invalid Password!", "err")
             return render_template_string(CONFIRM_PAGE, video=video, action="delete")
 
-        try:
-            cloudinary.uploader.destroy(video[2], resource_type="video")
-        except Exception as e:
-            print(f"Cloudinary destroy error: {e}")
+        if video[3] == "cloudinary":
+            try:
+                cloudinary.uploader.destroy(video[2], resource_type="video")
+            except Exception as e:
+                print(f"Cloudinary destroy error: {e}")
 
         conn = sqlite3.connect(DB_NAME)
         cur = conn.cursor()
