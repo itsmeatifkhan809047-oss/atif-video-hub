@@ -7,9 +7,7 @@ import cloudinary.uploader
 import cloudinary.api
 import cloudinary.utils
 
-# ================= CREDENTIALS CONFIGURATION =================
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "809047")
-
 CLOUDINARY_CLOUD_NAME = os.environ.get("CLOUDINARY_CLOUD_NAME", "dmzqlfd9s")
 CLOUDINARY_API_KEY = os.environ.get("CLOUDINARY_API_KEY", "884785368881513")
 CLOUDINARY_API_SECRET = os.environ.get("CLOUDINARY_API_SECRET", "t2JjczLpiFQw2OnW_vbvjbdLwEg")
@@ -22,14 +20,13 @@ cloudinary.config(
 )
 
 app = Flask(__name__)
-app.secret_key = "jiobharat_opera_super_secret_key"
+app.secret_key = "pure_cloudinary_jiobharat_key"
 DB_NAME = "videos.db"
 
-# ================= DATABASE SETUP =================
 def init_db():
     conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
-    cursor.execute("""
+    cur = conn.cursor()
+    cur.execute("""
         CREATE TABLE IF NOT EXISTS videos (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             title TEXT NOT NULL,
@@ -44,36 +41,26 @@ def init_db():
 def sync_from_cloudinary():
     try:
         init_db()
-        result = cloudinary.api.resources(
-            resource_type="video",
-            type="upload",
-            max_results=500
-        )
+        result = cloudinary.api.resources(resource_type="video", type="upload", max_results=500)
         resources = result.get("resources", [])
-        
         conn = sqlite3.connect(DB_NAME)
         cur = conn.cursor()
-        
         for item in resources:
             pub_id = item.get("public_id")
             dl_url = f"https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/video/upload/{pub_id}.mp4"
             thumb_url = f"https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/video/upload/so_0/{pub_id}.jpg"
             clean_title = pub_id.split("/")[-1].replace("_", " ").replace("-", " ")
-            
             cur.execute("""
                 INSERT OR IGNORE INTO videos (title, download_url, public_id, thumb_url)
                 VALUES (?, ?, ?, ?)
             """, (clean_title, dl_url, pub_id, thumb_url))
-            
         conn.commit()
         conn.close()
     except Exception as e:
-        print(f"Cloudinary sync error: {e}")
+        print(f"Sync error: {e}")
 
 init_db()
 sync_from_cloudinary()
-
-# ================= UI TEMPLATES =================
 
 HOME_PAGE = """
 <!DOCTYPE html>
@@ -93,14 +80,13 @@ HOME_PAGE = """
         .btn-delete { background-color: #ef4444; color: #ffffff; }
         .btn-download { background-color: #10b981; color: #ffffff; display: block; width: 92%; margin: 6px auto; text-align: center; }
         .search-box { margin-bottom: 15px; }
-        .search-input { width: 70%; padding: 8px; background-color: #1e293b; border: 1px solid #334155; color: #fff; border-radius: 6px; }
-        .card { background-color: #1e293b; border-radius: 8px; border: 1px solid #334155; margin-bottom: 14px; overflow: hidden; }
-        .thumb-wrapper { width: 100%; height: 180px; background-color: #000000; text-align: center; display: block; }
-        .thumb-img { width: 100%; height: 180px; object-fit: cover; }
+        .search-input { width: 68%; padding: 8px; background-color: #1e293b; border: 1px solid #334155; color: #fff; border-radius: 6px; }
+        .card { background-color: #1e293b; border-radius: 8px; border: 1px solid #334155; margin-bottom: 14px; padding-bottom: 8px; overflow: hidden; }
         .card-body { padding: 10px; }
         .card-title { font-size: 14px; font-weight: bold; margin-bottom: 8px; color: #f1f5f9; word-break: break-all; }
         .btn-grid { width: 100%; text-align: center; }
         .btn-grid td { width: 50%; padding: 2px; }
+        video { width: 100%; height: 180px; background: #000; }
     </style>
 </head>
 <body>
@@ -124,10 +110,9 @@ HOME_PAGE = """
     <div>
         {% for vid in videos %}
         <div class="card">
-            <div class="thumb-wrapper">
-                <img src="{{ vid[4] }}" class="thumb-img" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
-                <div style="display:none; padding-top:70px; color:#60a5fa; font-weight:bold;">▶ MP4 VIDEO</div>
-            </div>
+            <video controls preload="metadata" poster="{{ vid[4] }}">
+                <source src="{{ vid[2] }}" type="video/mp4">
+            </video>
             <div class="card-body">
                 <div class="card-title">{{ vid[1] }}</div>
                 <a href="{{ vid[2] }}" class="btn btn-download" target="_blank">↓ Download MP4</a>
@@ -172,7 +157,7 @@ ADMIN_PAGE = """
 </head>
 <body>
     <div class="box">
-        <h3 style="color:#60a5fa; text-align:center;">Cloudinary Video Upload</h3>
+        <h3 style="color:#60a5fa; text-align:center;">Cloudinary Upload</h3>
         <div id="alert" style="display:none; color:red; margin-bottom:10px;"></div>
         <form id="upForm">
             <label>Select Video:</label><br>
@@ -229,7 +214,7 @@ ADMIN_PAGE = """
                     });
                     location.href = '{{ url_for("home") }}';
                 } else {
-                    alert.innerText = "Cloudinary upload failed!";
+                    alert.innerText = "Upload failed!";
                     alert.style.display = 'block';
                 }
             };
@@ -275,8 +260,6 @@ CONFIRM_PAGE = """
 </html>
 """
 
-# ================= ROUTES =================
-
 @app.route("/")
 def home():
     query = request.args.get("q", "").strip()
@@ -286,7 +269,6 @@ def home():
 
     conn = sqlite3.connect(DB_NAME)
     cur = conn.cursor()
-
     if query:
         cur.execute("SELECT id, title, download_url, public_id, thumb_url FROM videos WHERE title LIKE ? ORDER BY id DESC LIMIT ? OFFSET ?", (f"%{query}%", limit + 1, offset))
     else:
