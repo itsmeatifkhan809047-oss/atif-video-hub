@@ -7,7 +7,9 @@ import cloudinary.uploader
 import cloudinary.api
 import cloudinary.utils
 
+# ================= CLOUDINARY CREDENTIALS =================
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "809047")
+
 CLOUDINARY_CLOUD_NAME = os.environ.get("CLOUDINARY_CLOUD_NAME", "dmzqlfd9s")
 CLOUDINARY_API_KEY = os.environ.get("CLOUDINARY_API_KEY", "884785368881513")
 CLOUDINARY_API_SECRET = os.environ.get("CLOUDINARY_API_SECRET", "t2JjczLpiFQw2OnW_vbvjbdLwEg")
@@ -20,8 +22,27 @@ cloudinary.config(
 )
 
 app = Flask(__name__)
-app.secret_key = "pure_cloudinary_jiobharat_key"
+app.secret_key = "pure_cloudinary_fixed_key"
 DB_NAME = "videos.db"
+
+# ================= HELPER FUNCTIONS =================
+def get_cloudinary_urls(public_id):
+    # Generates clean MP4 stream/download link
+    video_url, _ = cloudinary.utils.cloudinary_url(
+        public_id,
+        resource_type="video",
+        format="mp4",
+        secure=True
+    )
+    # Generates correct JPEG thumbnail link from first frame of video
+    thumb_url, _ = cloudinary.utils.cloudinary_url(
+        public_id,
+        resource_type="video",
+        format="jpg",
+        start_offset="0",
+        secure=True
+    )
+    return video_url, thumb_url
 
 def init_db():
     conn = sqlite3.connect(DB_NAME)
@@ -41,26 +62,34 @@ def init_db():
 def sync_from_cloudinary():
     try:
         init_db()
-        result = cloudinary.api.resources(resource_type="video", type="upload", max_results=500)
+        result = cloudinary.api.resources(
+            resource_type="video",
+            type="upload",
+            max_results=500
+        )
         resources = result.get("resources", [])
         conn = sqlite3.connect(DB_NAME)
         cur = conn.cursor()
+        
         for item in resources:
             pub_id = item.get("public_id")
-            dl_url = f"https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/video/upload/{pub_id}.mp4"
-            thumb_url = f"https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/video/upload/so_0/{pub_id}.jpg"
+            dl_url, thumb_url = get_cloudinary_urls(pub_id)
             clean_title = pub_id.split("/")[-1].replace("_", " ").replace("-", " ")
+            
             cur.execute("""
                 INSERT OR IGNORE INTO videos (title, download_url, public_id, thumb_url)
                 VALUES (?, ?, ?, ?)
             """, (clean_title, dl_url, pub_id, thumb_url))
+            
         conn.commit()
         conn.close()
     except Exception as e:
-        print(f"Sync error: {e}")
+        print(f"Cloudinary Sync Error: {e}")
 
 init_db()
 sync_from_cloudinary()
+
+# ================= HTML TEMPLATES =================
 
 HOME_PAGE = """
 <!DOCTYPE html>
@@ -81,12 +110,13 @@ HOME_PAGE = """
         .btn-download { background-color: #10b981; color: #ffffff; display: block; width: 92%; margin: 6px auto; text-align: center; }
         .search-box { margin-bottom: 15px; }
         .search-input { width: 68%; padding: 8px; background-color: #1e293b; border: 1px solid #334155; color: #fff; border-radius: 6px; }
-        .card { background-color: #1e293b; border-radius: 8px; border: 1px solid #334155; margin-bottom: 14px; padding-bottom: 8px; overflow: hidden; }
+        .card { background-color: #1e293b; border-radius: 8px; border: 1px solid #334155; margin-bottom: 14px; overflow: hidden; }
+        .thumb-wrapper { width: 100%; height: 180px; background-color: #000000; text-align: center; overflow: hidden; }
+        .thumb-img { width: 100%; height: 180px; object-fit: cover; }
         .card-body { padding: 10px; }
         .card-title { font-size: 14px; font-weight: bold; margin-bottom: 8px; color: #f1f5f9; word-break: break-all; }
         .btn-grid { width: 100%; text-align: center; }
         .btn-grid td { width: 50%; padding: 2px; }
-        video { width: 100%; height: 180px; background: #000; }
     </style>
 </head>
 <body>
@@ -110,12 +140,12 @@ HOME_PAGE = """
     <div>
         {% for vid in videos %}
         <div class="card">
-            <video controls preload="metadata" poster="{{ vid[4] }}">
-                <source src="{{ vid[2] }}" type="video/mp4">
-            </video>
+            <div class="thumb-wrapper">
+                <img src="{{ vid[4] }}" class="thumb-img" alt="Thumbnail" onerror="this.onerror=null; this.src='https://res.cloudinary.com/{{ cloud_name }}/image/upload/v1/sample.jpg';">
+            </div>
             <div class="card-body">
                 <div class="card-title">{{ vid[1] }}</div>
-                <a href="{{ vid[2] }}" class="btn btn-download" target="_blank">↓ Download MP4</a>
+                <a href="{{ vid[2] }}" class="btn btn-download" target="_blank" download>↓ Download MP4</a>
                 <table class="btn-grid">
                     <tr>
                         <td><a href="{{ url_for('rename_video', video_id=vid[0]) }}" class="btn btn-rename" style="display:block;">Rename</a></td>
@@ -157,20 +187,20 @@ ADMIN_PAGE = """
 </head>
 <body>
     <div class="box">
-        <h3 style="color:#60a5fa; text-align:center;">Cloudinary Upload</h3>
+        <h3 style="color:#60a5fa; text-align:center;">Cloudinary Media Upload</h3>
         <div id="alert" style="display:none; color:red; margin-bottom:10px;"></div>
         <form id="upForm">
-            <label>Select Video:</label><br>
+            <label>Select Video File:</label><br>
             <input type="file" id="file" accept="video/*" required><br>
             <label>Title:</label><br>
             <input type="text" id="title" required><br>
-            <label>Password:</label><br>
+            <label>Admin Password:</label><br>
             <input type="password" id="pass" required><br>
-            <button type="button" class="btn-submit" onclick="processUpload()">Start Upload</button>
+            <button type="button" class="btn-submit" onclick="processUpload()">Upload Video</button>
         </form>
         <div id="stText" style="margin-top:10px; color:#10b981; font-weight:bold;"></div>
         <br>
-        <a href="{{ url_for('home') }}" style="color:#94a3b8;">&larr; Back</a>
+        <a href="{{ url_for('home') }}" style="color:#94a3b8;">&larr; Back to Home</a>
     </div>
 
     <script>
@@ -183,7 +213,7 @@ ADMIN_PAGE = """
 
             if (!file || !title || !pass) return;
             alert.style.display = 'none';
-            stText.innerText = "Uploading to Cloudinary...";
+            stText.innerText = "Initiating Cloudinary Upload...";
 
             let signRes = await fetch('{{ url_for("get_upload_params") }}', {
                 method: 'POST',
@@ -191,7 +221,12 @@ ADMIN_PAGE = """
                 body: JSON.stringify({ password: pass })
             });
             let sign = await signRes.json();
-            if(sign.status !== 'success') { alert.innerText = sign.message; alert.style.display = 'block'; return; }
+            if(sign.status !== 'success') { 
+                alert.innerText = sign.message; 
+                alert.style.display = 'block'; 
+                stText.innerText = "";
+                return; 
+            }
 
             let fd = new FormData();
             fd.append('file', file);
@@ -202,7 +237,9 @@ ADMIN_PAGE = """
             let xhr = new XMLHttpRequest();
             xhr.open('POST', `https://api.cloudinary.com/v1_1/${sign.cloud_name}/video/upload`, true);
             xhr.upload.onprogress = e => {
-                stText.innerText = "Uploading: " + Math.round((e.loaded / e.total) * 100) + "%";
+                if (e.lengthComputable) {
+                    stText.innerText = "Uploading: " + Math.round((e.loaded / e.total) * 100) + "%";
+                }
             };
             xhr.onload = async () => {
                 if(xhr.status === 200) {
@@ -214,8 +251,9 @@ ADMIN_PAGE = """
                     });
                     location.href = '{{ url_for("home") }}';
                 } else {
-                    alert.innerText = "Upload failed!";
+                    alert.innerText = "Cloudinary Upload Failed!";
                     alert.style.display = 'block';
+                    stText.innerText = "";
                 }
             };
             xhr.send(fd);
@@ -260,6 +298,8 @@ CONFIRM_PAGE = """
 </html>
 """
 
+# ================= APP ROUTES =================
+
 @app.route("/")
 def home():
     query = request.args.get("q", "").strip()
@@ -280,7 +320,7 @@ def home():
     has_next = len(rows) > limit
     videos = rows[:limit]
 
-    return render_template_string(HOME_PAGE, videos=videos, query=query, page=page, has_next=has_next)
+    return render_template_string(HOME_PAGE, videos=videos, query=query, page=page, has_next=has_next, cloud_name=CLOUDINARY_CLOUD_NAME)
 
 @app.route("/sync")
 def sync_videos():
@@ -313,13 +353,12 @@ def get_upload_params():
 def save_video():
     data = request.get_json() or {}
     if data.get("password") != ADMIN_PASSWORD:
-        return jsonify({"status": "error", "message": "Invalid password"}), 403
+        return jsonify({"status": "error", "message": "Invalid Password"}), 403
 
     title = data.get("title", "").strip()
     public_id = data.get("public_id", "").strip()
     
-    download_url = f"https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/video/upload/{public_id}.mp4"
-    thumb_url = f"https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/video/upload/so_0/{public_id}.jpg"
+    download_url, thumb_url = get_cloudinary_urls(public_id)
 
     conn = sqlite3.connect(DB_NAME)
     cur = conn.cursor()
@@ -372,7 +411,7 @@ def delete_video(video_id):
         try:
             cloudinary.uploader.destroy(video[2], resource_type="video")
         except Exception as e:
-            print(e)
+            print(f"Delete Error: {e}")
 
         conn = sqlite3.connect(DB_NAME)
         cur = conn.cursor()
