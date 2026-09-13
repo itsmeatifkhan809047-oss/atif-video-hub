@@ -7,7 +7,6 @@ import cloudinary.uploader
 import cloudinary.api
 import cloudinary.utils
 
-# ================= CLOUDINARY CREDENTIALS =================
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "809047")
 
 CLOUDINARY_CLOUD_NAME = os.environ.get("CLOUDINARY_CLOUD_NAME", "dmzqlfd9s")
@@ -25,23 +24,13 @@ app = Flask(__name__)
 app.secret_key = "pure_cloudinary_fixed_key"
 DB_NAME = "videos.db"
 
-# ================= HELPER FUNCTIONS =================
 def get_cloudinary_urls(public_id):
-    # Generates clean MP4 stream/download link
-    video_url, _ = cloudinary.utils.cloudinary_url(
-        public_id,
-        resource_type="video",
-        format="mp4",
-        secure=True
-    )
-    # Generates correct JPEG thumbnail link from first frame of video
-    thumb_url, _ = cloudinary.utils.cloudinary_url(
-        public_id,
-        resource_type="video",
-        format="jpg",
-        start_offset="0",
-        secure=True
-    )
+    # Direct HTTPS video download link with fl_attachment for forced download
+    video_url = f"https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/video/upload/fl_attachment/{public_id}.mp4"
+    
+    # Correct direct image frame extraction thumbnail link
+    thumb_url = f"https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/video/upload/so_0,w_400,c_limit/{public_id}.jpg"
+    
     return video_url, thumb_url
 
 def init_db():
@@ -77,8 +66,11 @@ def sync_from_cloudinary():
             clean_title = pub_id.split("/")[-1].replace("_", " ").replace("-", " ")
             
             cur.execute("""
-                INSERT OR IGNORE INTO videos (title, download_url, public_id, thumb_url)
+                INSERT INTO videos (title, download_url, public_id, thumb_url)
                 VALUES (?, ?, ?, ?)
+                ON CONFLICT(public_id) DO UPDATE SET
+                    download_url=excluded.download_url,
+                    thumb_url=excluded.thumb_url
             """, (clean_title, dl_url, pub_id, thumb_url))
             
         conn.commit()
@@ -87,9 +79,6 @@ def sync_from_cloudinary():
         print(f"Cloudinary Sync Error: {e}")
 
 init_db()
-sync_from_cloudinary()
-
-# ================= HTML TEMPLATES =================
 
 HOME_PAGE = """
 <!DOCTYPE html>
@@ -107,12 +96,12 @@ HOME_PAGE = """
         .btn-sync { background-color: #334155; color: #cbd5e1; }
         .btn-rename { background-color: #f59e0b; color: #000000; }
         .btn-delete { background-color: #ef4444; color: #ffffff; }
-        .btn-download { background-color: #10b981; color: #ffffff; display: block; width: 92%; margin: 6px auto; text-align: center; }
+        .btn-download { background-color: #10b981; color: #ffffff; display: block; width: 92%; margin: 6px auto; text-align: center; text-decoration: none; font-weight: bold; padding: 8px; border-radius: 6px; }
         .search-box { margin-bottom: 15px; }
-        .search-input { width: 68%; padding: 8px; background-color: #1e293b; border: 1px solid #334155; color: #fff; border-radius: 6px; }
+        .search-input { width: 65%; padding: 8px; background-color: #1e293b; border: 1px solid #334155; color: #fff; border-radius: 6px; }
         .card { background-color: #1e293b; border-radius: 8px; border: 1px solid #334155; margin-bottom: 14px; overflow: hidden; }
-        .thumb-wrapper { width: 100%; height: 180px; background-color: #000000; text-align: center; overflow: hidden; }
-        .thumb-img { width: 100%; height: 180px; object-fit: cover; }
+        .thumb-wrapper { width: 100%; height: 200px; background-color: #000000; text-align: center; }
+        .thumb-img { width: 100%; height: 100%; object-fit: cover; display: block; }
         .card-body { padding: 10px; }
         .card-title { font-size: 14px; font-weight: bold; margin-bottom: 8px; color: #f1f5f9; word-break: break-all; }
         .btn-grid { width: 100%; text-align: center; }
@@ -125,7 +114,7 @@ HOME_PAGE = """
             <tr>
                 <td><a href="{{ url_for('home') }}" class="logo">▶ StreamHub</a></td>
                 <td align="right">
-                    <a href="{{ url_for('sync_videos') }}" class="btn btn-sync">Sync</a>
+                    <a href="{{ url_for('sync_videos') }}" class="btn btn-sync">Sync DB</a>
                     <a href="{{ url_for('admin_panel') }}" class="btn btn-primary">+ Upload</a>
                 </td>
             </tr>
@@ -141,11 +130,11 @@ HOME_PAGE = """
         {% for vid in videos %}
         <div class="card">
             <div class="thumb-wrapper">
-                <img src="{{ vid[4] }}" class="thumb-img" alt="Thumbnail" onerror="this.onerror=null; this.src='https://res.cloudinary.com/{{ cloud_name }}/image/upload/v1/sample.jpg';">
+                <img src="{{ vid[4] }}" class="thumb-img" alt="Thumbnail" loading="lazy">
             </div>
             <div class="card-body">
                 <div class="card-title">{{ vid[1] }}</div>
-                <a href="{{ vid[2] }}" class="btn btn-download" target="_blank" download>↓ Download MP4</a>
+                <a href="{{ vid[2] }}" class="btn-download" target="_blank" download>↓ Download Video</a>
                 <table class="btn-grid">
                     <tr>
                         <td><a href="{{ url_for('rename_video', video_id=vid[0]) }}" class="btn btn-rename" style="display:block;">Rename</a></td>
@@ -155,17 +144,8 @@ HOME_PAGE = """
             </div>
         </div>
         {% else %}
-        <p style="text-align: center; color: #94a3b8; padding: 20px;">No videos found.</p>
+        <p style="text-align: center; color: #94a3b8; padding: 20px;">No videos found. Click 'Sync DB' to fetch uploaded videos.</p>
         {% endfor %}
-    </div>
-
-    <div style="text-align: center; margin-top: 15px;">
-        {% if page > 1 %}
-            <a href="{{ url_for('home', page=page-1, q=query) }}" class="btn btn-sync">&laquo; Prev</a>
-        {% endif %}
-        {% if has_next %}
-            <a href="{{ url_for('home', page=page+1, q=query) }}" class="btn btn-sync">Next &raquo;</a>
-        {% endif %}
     </div>
 </body>
 </html>
@@ -298,29 +278,19 @@ CONFIRM_PAGE = """
 </html>
 """
 
-# ================= APP ROUTES =================
-
 @app.route("/")
 def home():
     query = request.args.get("q", "").strip()
-    page = int(request.args.get("page", 1))
-    limit = 12
-    offset = (page - 1) * limit
-
     conn = sqlite3.connect(DB_NAME)
     cur = conn.cursor()
     if query:
-        cur.execute("SELECT id, title, download_url, public_id, thumb_url FROM videos WHERE title LIKE ? ORDER BY id DESC LIMIT ? OFFSET ?", (f"%{query}%", limit + 1, offset))
+        cur.execute("SELECT id, title, download_url, public_id, thumb_url FROM videos WHERE title LIKE ? ORDER BY id DESC", (f"%{query}%",))
     else:
-        cur.execute("SELECT id, title, download_url, public_id, thumb_url FROM videos ORDER BY id DESC LIMIT ? OFFSET ?", (limit + 1, offset))
+        cur.execute("SELECT id, title, download_url, public_id, thumb_url FROM videos ORDER BY id DESC")
 
-    rows = cur.fetchall()
+    videos = cur.fetchall()
     conn.close()
-
-    has_next = len(rows) > limit
-    videos = rows[:limit]
-
-    return render_template_string(HOME_PAGE, videos=videos, query=query, page=page, has_next=has_next, cloud_name=CLOUDINARY_CLOUD_NAME)
+    return render_template_string(HOME_PAGE, videos=videos, query=query, cloud_name=CLOUDINARY_CLOUD_NAME)
 
 @app.route("/sync")
 def sync_videos():
@@ -362,7 +332,14 @@ def save_video():
 
     conn = sqlite3.connect(DB_NAME)
     cur = conn.cursor()
-    cur.execute("INSERT OR REPLACE INTO videos (title, download_url, public_id, thumb_url) VALUES (?, ?, ?, ?)", (title, download_url, public_id, thumb_url))
+    cur.execute("""
+        INSERT INTO videos (title, download_url, public_id, thumb_url)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(public_id) DO UPDATE SET
+            title=excluded.title,
+            download_url=excluded.download_url,
+            thumb_url=excluded.thumb_url
+    """, (title, download_url, public_id, thumb_url))
     conn.commit()
     conn.close()
 
