@@ -14,13 +14,6 @@ CLOUDINARY_CLOUD_NAME = os.environ.get("CLOUDINARY_CLOUD_NAME", "dmzqlfd9s")
 CLOUDINARY_API_KEY = os.environ.get("CLOUDINARY_API_KEY", "884785368881513")
 CLOUDINARY_API_SECRET = os.environ.get("CLOUDINARY_API_SECRET", "t2JjczLpiFQw2OnW_vbvjbdLwEg")
 
-FIREBASE_API_KEY = os.environ.get("FIREBASE_API_KEY", "YOUR_FIREBASE_API_KEY")
-FIREBASE_AUTH_DOMAIN = os.environ.get("FIREBASE_AUTH_DOMAIN", "your-app.firebaseapp.com")
-FIREBASE_PROJECT_ID = os.environ.get("FIREBASE_PROJECT_ID", "your-app-id")
-FIREBASE_STORAGE_BUCKET = os.environ.get("FIREBASE_STORAGE_BUCKET", "your-app.appspot.com")
-FIREBASE_MESSAGING_SENDER_ID = os.environ.get("FIREBASE_MESSAGING_SENDER_ID", "123456789")
-FIREBASE_APP_ID = os.environ.get("FIREBASE_APP_ID", "1:123456:web:abcd")
-
 cloudinary.config(
     cloud_name=CLOUDINARY_CLOUD_NAME,
     api_key=CLOUDINARY_API_KEY,
@@ -42,7 +35,6 @@ def init_db():
             title TEXT NOT NULL,
             download_url TEXT NOT NULL,
             public_id TEXT NOT NULL UNIQUE,
-            storage_type TEXT DEFAULT 'cloudinary',
             thumb_url TEXT DEFAULT ''
         )
     """)
@@ -65,12 +57,12 @@ def sync_from_cloudinary():
         for item in resources:
             pub_id = item.get("public_id")
             dl_url = f"https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/video/upload/{pub_id}.mp4"
-            thumb_url = f"https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/video/upload/{pub_id}.jpg"
+            thumb_url = f"https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/video/upload/so_0/{pub_id}.jpg"
             clean_title = pub_id.split("/")[-1].replace("_", " ").replace("-", " ")
             
             cur.execute("""
-                INSERT OR IGNORE INTO videos (title, download_url, public_id, storage_type, thumb_url)
-                VALUES (?, ?, ?, 'cloudinary', ?)
+                INSERT OR IGNORE INTO videos (title, download_url, public_id, thumb_url)
+                VALUES (?, ?, ?, ?)
             """, (clean_title, dl_url, pub_id, thumb_url))
             
         conn.commit()
@@ -171,8 +163,6 @@ ADMIN_PAGE = """
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Upload Center</title>
-    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-storage-compat.js"></script>
     <style>
         body { background: #0f172a; color: #fff; font-family: sans-serif; padding: 15px; }
         .box { background: #1e293b; border-radius: 8px; padding: 16px; border: 1px solid #334155; }
@@ -182,7 +172,7 @@ ADMIN_PAGE = """
 </head>
 <body>
     <div class="box">
-        <h3 style="color:#60a5fa; text-align:center;">Upload Media</h3>
+        <h3 style="color:#60a5fa; text-align:center;">Cloudinary Video Upload</h3>
         <div id="alert" style="display:none; color:red; margin-bottom:10px;"></div>
         <form id="upForm">
             <label>Select Video:</label><br>
@@ -199,17 +189,6 @@ ADMIN_PAGE = """
     </div>
 
     <script>
-        const firebaseConfig = {
-            apiKey: "{{ fb_config.apiKey }}",
-            authDomain: "{{ fb_config.authDomain }}",
-            projectId: "{{ fb_config.projectId }}",
-            storageBucket: "{{ fb_config.storageBucket }}",
-            messagingSenderId: "{{ fb_config.messagingSenderId }}",
-            appId: "{{ fb_config.appId }}"
-        };
-
-        if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
-
         async function processUpload() {
             const file = document.getElementById('file').files[0];
             const title = document.getElementById('title').value.trim();
@@ -219,60 +198,42 @@ ADMIN_PAGE = """
 
             if (!file || !title || !pass) return;
             alert.style.display = 'none';
+            stText.innerText = "Uploading to Cloudinary...";
 
-            if (file.size > 95 * 1024 * 1024) {
-                stText.innerText = "Uploading to Firebase...";
-                const ref = firebase.storage().ref('videos/' + Date.now() + '_' + file.name);
-                const task = ref.put(file);
+            let signRes = await fetch('{{ url_for("get_upload_params") }}', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ password: pass })
+            });
+            let sign = await signRes.json();
+            if(sign.status !== 'success') { alert.innerText = sign.message; alert.style.display = 'block'; return; }
 
-                task.on('state_changed', 
-                    s => { stText.innerText = "Uploading: " + Math.round((s.bytesTransferred / s.totalBytes) * 100) + "%"; },
-                    e => { alert.innerText = e.message; alert.style.display = 'block'; },
-                    async () => {
-                        let url = await task.snapshot.ref.getDownloadURL();
-                        let res = await fetch('{{ url_for("save_firebase_video") }}', {
-                            method: 'POST',
-                            headers: {'Content-Type': 'application/json'},
-                            body: JSON.stringify({ password: pass, title: title, download_url: url, public_id: ref.fullPath })
-                        });
-                        let d = await res.json();
-                        if(d.status === 'success') location.href = '{{ url_for("home") }}';
-                    }
-                );
-            } else {
-                stText.innerText = "Uploading to Cloudinary...";
-                let signRes = await fetch('{{ url_for("get_upload_params") }}', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ password: pass })
-                });
-                let sign = await signRes.json();
-                if(sign.status !== 'success') { alert.innerText = sign.message; alert.style.display = 'block'; return; }
+            let fd = new FormData();
+            fd.append('file', file);
+            fd.append('api_key', sign.api_key);
+            fd.append('timestamp', sign.timestamp);
+            fd.append('signature', sign.signature);
 
-                let fd = new FormData();
-                fd.append('file', file);
-                fd.append('api_key', sign.api_key);
-                fd.append('timestamp', sign.timestamp);
-                fd.append('signature', sign.signature);
-
-                let xhr = new XMLHttpRequest();
-                xhr.open('POST', `https://api.cloudinary.com/v1_1/${sign.cloud_name}/video/upload`, true);
-                xhr.upload.onprogress = e => {
-                    stText.innerText = "Uploading: " + Math.round((e.loaded / e.total) * 100) + "%";
-                };
-                xhr.onload = async () => {
-                    if(xhr.status === 200) {
-                        let cData = JSON.parse(xhr.responseText);
-                        await fetch('{{ url_for("save_video") }}', {
-                            method: 'POST',
-                            headers: {'Content-Type': 'application/json'},
-                            body: JSON.stringify({ password: pass, title: title, public_id: cData.public_id })
-                        });
-                        location.href = '{{ url_for("home") }}';
-                    }
-                };
-                xhr.send(fd);
-            }
+            let xhr = new XMLHttpRequest();
+            xhr.open('POST', `https://api.cloudinary.com/v1_1/${sign.cloud_name}/video/upload`, true);
+            xhr.upload.onprogress = e => {
+                stText.innerText = "Uploading: " + Math.round((e.loaded / e.total) * 100) + "%";
+            };
+            xhr.onload = async () => {
+                if(xhr.status === 200) {
+                    let cData = JSON.parse(xhr.responseText);
+                    await fetch('{{ url_for("save_video") }}', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({ password: pass, title: title, public_id: cData.public_id })
+                    });
+                    location.href = '{{ url_for("home") }}';
+                } else {
+                    alert.innerText = "Cloudinary upload failed!";
+                    alert.style.display = 'block';
+                }
+            };
+            xhr.send(fd);
         }
     </script>
 </body>
@@ -327,9 +288,9 @@ def home():
     cur = conn.cursor()
 
     if query:
-        cur.execute("SELECT id, title, download_url, public_id, thumb_url, storage_type FROM videos WHERE title LIKE ? ORDER BY id DESC LIMIT ? OFFSET ?", (f"%{query}%", limit + 1, offset))
+        cur.execute("SELECT id, title, download_url, public_id, thumb_url FROM videos WHERE title LIKE ? ORDER BY id DESC LIMIT ? OFFSET ?", (f"%{query}%", limit + 1, offset))
     else:
-        cur.execute("SELECT id, title, download_url, public_id, thumb_url, storage_type FROM videos ORDER BY id DESC LIMIT ? OFFSET ?", (limit + 1, offset))
+        cur.execute("SELECT id, title, download_url, public_id, thumb_url FROM videos ORDER BY id DESC LIMIT ? OFFSET ?", (limit + 1, offset))
 
     rows = cur.fetchall()
     conn.close()
@@ -346,15 +307,7 @@ def sync_videos():
 
 @app.route("/admin")
 def admin_panel():
-    fb_config = {
-        "apiKey": FIREBASE_API_KEY,
-        "authDomain": FIREBASE_AUTH_DOMAIN,
-        "projectId": FIREBASE_PROJECT_ID,
-        "storageBucket": FIREBASE_STORAGE_BUCKET,
-        "messagingSenderId": FIREBASE_MESSAGING_SENDER_ID,
-        "appId": FIREBASE_APP_ID
-    }
-    return render_template_string(ADMIN_PAGE, fb_config=fb_config)
+    return render_template_string(ADMIN_PAGE)
 
 @app.route("/get_upload_params", methods=["POST"])
 def get_upload_params():
@@ -384,29 +337,11 @@ def save_video():
     public_id = data.get("public_id", "").strip()
     
     download_url = f"https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/video/upload/{public_id}.mp4"
-    thumb_url = f"https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/video/upload/{public_id}.jpg"
+    thumb_url = f"https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/video/upload/so_0/{public_id}.jpg"
 
     conn = sqlite3.connect(DB_NAME)
     cur = conn.cursor()
-    cur.execute("INSERT OR REPLACE INTO videos (title, download_url, public_id, storage_type, thumb_url) VALUES (?, ?, ?, 'cloudinary', ?)", (title, download_url, public_id, thumb_url))
-    conn.commit()
-    conn.close()
-
-    return jsonify({"status": "success"})
-
-@app.route("/save_firebase_video", methods=["POST"])
-def save_firebase_video():
-    data = request.get_json() or {}
-    if data.get("password") != ADMIN_PASSWORD:
-        return jsonify({"status": "error", "message": "Invalid password"}), 403
-
-    title = data.get("title", "").strip()
-    download_url = data.get("download_url", "").strip()
-    public_id = data.get("public_id", "").strip()
-
-    conn = sqlite3.connect(DB_NAME)
-    cur = conn.cursor()
-    cur.execute("INSERT OR REPLACE INTO videos (title, download_url, public_id, storage_type, thumb_url) VALUES (?, ?, ?, 'firebase', '')", (title, download_url, public_id))
+    cur.execute("INSERT OR REPLACE INTO videos (title, download_url, public_id, thumb_url) VALUES (?, ?, ?, ?)", (title, download_url, public_id, thumb_url))
     conn.commit()
     conn.close()
 
@@ -441,7 +376,7 @@ def rename_video(video_id):
 def delete_video(video_id):
     conn = sqlite3.connect(DB_NAME)
     cur = conn.cursor()
-    cur.execute("SELECT id, title, public_id, storage_type FROM videos WHERE id = ?", (video_id,))
+    cur.execute("SELECT id, title, public_id FROM videos WHERE id = ?", (video_id,))
     video = cur.fetchone()
     conn.close()
 
@@ -452,9 +387,10 @@ def delete_video(video_id):
             flash("Invalid Password!")
             return render_template_string(CONFIRM_PAGE, video=video, action="delete")
 
-        if video[3] == "cloudinary":
-            try: cloudinary.uploader.destroy(video[2], resource_type="video")
-            except Exception as e: print(e)
+        try:
+            cloudinary.uploader.destroy(video[2], resource_type="video")
+        except Exception as e:
+            print(e)
 
         conn = sqlite3.connect(DB_NAME)
         cur = conn.cursor()
