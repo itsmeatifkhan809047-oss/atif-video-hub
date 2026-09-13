@@ -1,1 +1,4 @@
-Flask\ncloudinary\nrequests
+Flask
+cloudinary
+requests
+gunicorn
