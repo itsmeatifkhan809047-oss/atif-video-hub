@@ -64,8 +64,8 @@ def sync_from_cloudinary():
         
         for item in resources:
             pub_id = item.get("public_id")
-            dl_url = f"https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/video/upload/fl_attachment/{pub_id}.mp4"
-            thumb_url = f"https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/video/upload/so_0,w_480,h_270,c_fill,f_jpg/{pub_id}.jpg"
+            dl_url = f"https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/video/upload/{pub_id}.mp4"
+            thumb_url = f"https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/video/upload/{pub_id}.jpg"
             clean_title = pub_id.split("/")[-1].replace("_", " ").replace("-", " ")
             
             cur.execute("""
@@ -85,74 +85,74 @@ sync_from_cloudinary()
 
 HOME_PAGE = """
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>StreamHub - Video Portal</title>
+    <title>StreamHub</title>
     <style>
-        :root { --bg: #0f172a; --card: #1e293b; --text: #f8fafc; --accent: #3b82f6; --danger: #ef4444; --warning: #f59e0b; }
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 12px; }
-        .nav-bar { display: flex; justify-content: space-between; align-items: center; background: var(--card); padding: 12px 16px; border-radius: 12px; margin-bottom: 16px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
-        .logo { font-size: 18px; font-weight: 800; color: #60a5fa; text-decoration: none; }
-        .nav-btns { display: flex; gap: 8px; }
-        .btn { padding: 8px 14px; font-size: 13px; font-weight: 600; border-radius: 8px; text-decoration: none; border: none; cursor: pointer; transition: 0.2s ease; display: inline-flex; align-items: center; justify-content: center; }
-        .btn-primary { background: var(--accent); color: #fff; }
-        .btn-sync { background: #334155; color: #cbd5e1; }
-        .btn-rename { background: var(--warning); color: #000; flex: 1; }
-        .btn-delete { background: var(--danger); color: #fff; flex: 1; }
-        .btn-download { background: #10b981; color: #fff; width: 100%; font-size: 14px; margin-bottom: 8px; }
-        .search-box { display: flex; gap: 8px; margin-bottom: 20px; }
-        .search-input { flex: 1; padding: 10px 14px; background: var(--card); border: 1px solid #334155; color: #fff; border-radius: 8px; font-size: 14px; outline: none; }
-        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
-        .card { background: var(--card); border-radius: 12px; overflow: hidden; border: 1px solid #334155; display: flex; flex-direction: column; }
-        .thumb-wrapper { position: relative; width: 100%; aspect-ratio: 16/9; background: #000; overflow: hidden; }
-        .thumb-img { width: 100%; height: 100%; object-fit: cover; }
-        .card-body { padding: 12px; display: flex; flex-direction: column; flex: 1; }
-        .card-title { font-size: 14px; font-weight: 600; margin-bottom: 12px; line-height: 1.4; color: #f1f5f9; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; height: 38px; }
-        .actions { display: flex; gap: 8px; margin-top: auto; }
-        .pagination { display: flex; justify-content: center; gap: 10px; margin-top: 24px; }
+        body { background-color: #0f172a; color: #ffffff; font-family: sans-serif; margin: 0; padding: 10px; }
+        .nav-bar { background-color: #1e293b; padding: 10px; border-radius: 8px; margin-bottom: 12px; }
+        .logo { font-size: 18px; font-weight: bold; color: #60a5fa; text-decoration: none; }
+        .btn { display: inline-block; padding: 8px 12px; font-size: 12px; font-weight: bold; border-radius: 6px; text-decoration: none; border: none; cursor: pointer; text-align: center; }
+        .btn-primary { background-color: #3b82f6; color: #ffffff; }
+        .btn-sync { background-color: #334155; color: #cbd5e1; }
+        .btn-rename { background-color: #f59e0b; color: #000000; }
+        .btn-delete { background-color: #ef4444; color: #ffffff; }
+        .btn-download { background-color: #10b981; color: #ffffff; display: block; width: 92%; margin: 6px auto; text-align: center; }
+        .search-box { margin-bottom: 15px; }
+        .search-input { width: 70%; padding: 8px; background-color: #1e293b; border: 1px solid #334155; color: #fff; border-radius: 6px; }
+        .card { background-color: #1e293b; border-radius: 8px; border: 1px solid #334155; margin-bottom: 14px; overflow: hidden; }
+        .thumb-wrapper { width: 100%; height: 180px; background-color: #000000; text-align: center; display: block; }
+        .thumb-img { width: 100%; height: 180px; object-fit: cover; }
+        .card-body { padding: 10px; }
+        .card-title { font-size: 14px; font-weight: bold; margin-bottom: 8px; color: #f1f5f9; word-break: break-all; }
+        .btn-grid { width: 100%; text-align: center; }
+        .btn-grid td { width: 50%; padding: 2px; }
     </style>
 </head>
 <body>
     <div class="nav-bar">
-        <a href="{{ url_for('home') }}" class="logo">▶ StreamHub</a>
-        <div class="nav-btns">
-            <a href="{{ url_for('sync_videos') }}" class="btn btn-sync">Sync</a>
-            <a href="{{ url_for('admin_panel') }}" class="btn btn-primary">+ Upload</a>
-        </div>
+        <table width="100%">
+            <tr>
+                <td><a href="{{ url_for('home') }}" class="logo">▶ StreamHub</a></td>
+                <td align="right">
+                    <a href="{{ url_for('sync_videos') }}" class="btn btn-sync">Sync</a>
+                    <a href="{{ url_for('admin_panel') }}" class="btn btn-primary">+ Upload</a>
+                </td>
+            </tr>
+        </table>
     </div>
 
     <form method="GET" action="{{ url_for('home') }}" class="search-box">
-        <input type="text" name="q" value="{{ query }}" placeholder="Search videos..." class="search-input">
+        <input type="text" name="q" value="{{ query }}" placeholder="Search..." class="search-input">
         <button type="submit" class="btn btn-primary">Search</button>
     </form>
 
-    <div class="grid">
+    <div>
         {% for vid in videos %}
         <div class="card">
             <div class="thumb-wrapper">
-                {% if vid[4] and vid[4] != '' %}
-                    <img src="{{ vid[4] }}" class="thumb-img" onerror="this.onerror=null; this.src='https://via.placeholder.com/480x270/0f172a/60a5fa?text=Video+File';">
-                {% else %}
-                    <div style="width:100%; height:100%; display:flex; align-items:center; justify-content:center; background:#0284c7; color:#fff; font-weight:bold;">▶ MP4 Video</div>
-                {% endif %}
+                <img src="{{ vid[4] }}" class="thumb-img" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+                <div style="display:none; padding-top:70px; color:#60a5fa; font-weight:bold;">▶ MP4 VIDEO</div>
             </div>
             <div class="card-body">
                 <div class="card-title">{{ vid[1] }}</div>
-                <a href="{{ vid[2] }}" class="btn btn-download" target="_blank" download>↓ Download MP4</a>
-                <div class="actions">
-                    <a href="{{ url_for('rename_video', video_id=vid[0]) }}" class="btn btn-rename">Rename</a>
-                    <a href="{{ url_for('delete_video', video_id=vid[0]) }}" class="btn btn-delete">Delete</a>
-                </div>
+                <a href="{{ vid[2] }}" class="btn btn-download" target="_blank">↓ Download MP4</a>
+                <table class="btn-grid">
+                    <tr>
+                        <td><a href="{{ url_for('rename_video', video_id=vid[0]) }}" class="btn btn-rename" style="display:block;">Rename</a></td>
+                        <td><a href="{{ url_for('delete_video', video_id=vid[0]) }}" class="btn btn-delete" style="display:block;">Delete</a></td>
+                    </tr>
+                </table>
             </div>
         </div>
         {% else %}
-        <p style="grid-column: 1/-1; text-align: center; color: #94a3b8; padding: 40px 0;">No videos found.</p>
+        <p style="text-align: center; color: #94a3b8; padding: 20px;">No videos found.</p>
         {% endfor %}
     </div>
 
-    <div class="pagination">
+    <div style="text-align: center; margin-top: 15px;">
         {% if page > 1 %}
             <a href="{{ url_for('home', page=page-1, q=query) }}" class="btn btn-sync">&laquo; Prev</a>
         {% endif %}
@@ -166,7 +166,7 @@ HOME_PAGE = """
 
 ADMIN_PAGE = """
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -174,49 +174,28 @@ ADMIN_PAGE = """
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-storage-compat.js"></script>
     <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0f172a; color: #fff; margin: 0; padding: 16px; display: flex; justify-content: center; align-items: center; min-height: 90vh; }
-        .box { background: #1e293b; border-radius: 12px; padding: 24px; width: 100%; max-width: 440px; border: 1px solid #334155; }
-        h3 { margin-top: 0; color: #60a5fa; text-align: center; font-size: 20px; }
-        .field { margin-bottom: 16px; }
-        label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; color: #cbd5e1; }
-        input[type="text"], input[type="password"], input[type="file"] { width: 100%; padding: 10px; background: #0f172a; border: 1px solid #334155; border-radius: 8px; color: #fff; box-sizing: border-box; font-size: 14px; }
-        .btn-submit { width: 100%; padding: 12px; background: #3b82f6; color: #fff; border: none; border-radius: 8px; font-weight: bold; font-size: 15px; cursor: pointer; }
-        .progress-box { display: none; margin-top: 16px; background: #0f172a; padding: 12px; border-radius: 8px; border: 1px solid #334155; }
-        .track { background: #334155; height: 10px; border-radius: 5px; overflow: hidden; margin-top: 8px; }
-        .fill { background: #10b981; height: 100%; width: 0%; transition: width 0.2s; }
-        .alert { display: none; padding: 10px; border-radius: 8px; font-size: 13px; margin-bottom: 12px; text-align: center; }
-        .back-link { display: block; text-align: center; color: #94a3b8; text-decoration: none; font-size: 13px; margin-top: 16px; }
+        body { background: #0f172a; color: #fff; font-family: sans-serif; padding: 15px; }
+        .box { background: #1e293b; border-radius: 8px; padding: 16px; border: 1px solid #334155; }
+        input[type="text"], input[type="password"], input[type="file"] { width: 92%; padding: 8px; background: #0f172a; border: 1px solid #334155; color: #fff; margin-bottom: 12px; border-radius: 6px; }
+        .btn-submit { width: 98%; padding: 10px; background: #3b82f6; color: #fff; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; }
     </style>
 </head>
 <body>
     <div class="box">
-        <h3>Upload Media</h3>
-        <div id="alert" class="alert"></div>
+        <h3 style="color:#60a5fa; text-align:center;">Upload Media</h3>
+        <div id="alert" style="display:none; color:red; margin-bottom:10px;"></div>
         <form id="upForm">
-            <div class="field">
-                <label>Select Video</label>
-                <input type="file" id="file" accept="video/*" required>
-            </div>
-            <div class="field">
-                <label>Video Title</label>
-                <input type="text" id="title" placeholder="My Awesome Video" required>
-            </div>
-            <div class="field">
-                <label>Admin Password</label>
-                <input type="password" id="pass" placeholder="••••••••" required>
-            </div>
-            <button type="button" id="subBtn" class="btn-submit" onclick="processUpload()">Start Upload</button>
+            <label>Select Video:</label><br>
+            <input type="file" id="file" accept="video/*" required><br>
+            <label>Title:</label><br>
+            <input type="text" id="title" required><br>
+            <label>Password:</label><br>
+            <input type="password" id="pass" required><br>
+            <button type="button" class="btn-submit" onclick="processUpload()">Start Upload</button>
         </form>
-
-        <div id="pBox" class="progress-box">
-            <div style="display:flex; justify-content:space-between; font-size:12px;">
-                <span id="stText">Uploading...</span>
-                <span id="pText">0%</span>
-            </div>
-            <div class="track"><div id="pFill" class="fill"></div></div>
-        </div>
-
-        <a href="{{ url_for('home') }}" class="back-link">&larr; Back to Portal</a>
+        <div id="stText" style="margin-top:10px; color:#10b981; font-weight:bold;"></div>
+        <br>
+        <a href="{{ url_for('home') }}" style="color:#94a3b8;">&larr; Back</a>
     </div>
 
     <script>
@@ -235,28 +214,19 @@ ADMIN_PAGE = """
             const file = document.getElementById('file').files[0];
             const title = document.getElementById('title').value.trim();
             const pass = document.getElementById('pass').value.trim();
-            const alert = document.getElementById('alert');
-            const pBox = document.getElementById('pBox');
-            const pFill = document.getElementById('pFill');
-            const pText = document.getElementById('pText');
             const stText = document.getElementById('stText');
+            const alert = document.getElementById('alert');
 
             if (!file || !title || !pass) return;
-
-            pBox.style.display = 'block';
             alert.style.display = 'none';
 
             if (file.size > 95 * 1024 * 1024) {
-                stText.innerText = "Direct Firebase Upload (>95MB)...";
+                stText.innerText = "Uploading to Firebase...";
                 const ref = firebase.storage().ref('videos/' + Date.now() + '_' + file.name);
                 const task = ref.put(file);
 
                 task.on('state_changed', 
-                    s => {
-                        let pct = Math.round((s.bytesTransferred / s.totalBytes) * 100);
-                        pFill.style.width = pct + '%';
-                        pText.innerText = pct + '%';
-                    },
+                    s => { stText.innerText = "Uploading: " + Math.round((s.bytesTransferred / s.totalBytes) * 100) + "%"; },
                     e => { alert.innerText = e.message; alert.style.display = 'block'; },
                     async () => {
                         let url = await task.snapshot.ref.getDownloadURL();
@@ -270,7 +240,7 @@ ADMIN_PAGE = """
                     }
                 );
             } else {
-                stText.innerText = "Cloudinary Upload...";
+                stText.innerText = "Uploading to Cloudinary...";
                 let signRes = await fetch('{{ url_for("get_upload_params") }}', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
@@ -284,14 +254,11 @@ ADMIN_PAGE = """
                 fd.append('api_key', sign.api_key);
                 fd.append('timestamp', sign.timestamp);
                 fd.append('signature', sign.signature);
-                fd.append('eager', sign.eager);
 
                 let xhr = new XMLHttpRequest();
                 xhr.open('POST', `https://api.cloudinary.com/v1_1/${sign.cloud_name}/video/upload`, true);
                 xhr.upload.onprogress = e => {
-                    let pct = Math.round((e.loaded / e.total) * 100);
-                    pFill.style.width = pct + '%';
-                    pText.innerText = pct + '%';
+                    stText.innerText = "Uploading: " + Math.round((e.loaded / e.total) * 100) + "%";
                 };
                 xhr.onload = async () => {
                     if(xhr.status === 200) {
@@ -314,34 +281,34 @@ ADMIN_PAGE = """
 
 CONFIRM_PAGE = """
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ action|title }} Action</title>
+    <title>Confirm Action</title>
     <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0f172a; color: #fff; padding: 20px; display: flex; justify-content: center; align-items: center; min-height: 80vh; }
-        .card { background: #1e293b; border-radius: 12px; padding: 20px; width: 100%; max-width: 340px; border: 1px solid #334155; text-align: center; }
-        input { width: 100%; padding: 10px; background: #0f172a; border: 1px solid #334155; color: #fff; border-radius: 8px; margin: 10px 0; box-sizing: border-box; }
-        .btn-act { width: 100%; padding: 10px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; background: #3b82f6; color: #fff; }
+        body { background: #0f172a; color: #fff; font-family: sans-serif; padding: 20px; text-align: center; }
+        .card { background: #1e293b; border-radius: 8px; padding: 16px; border: 1px solid #334155; }
+        input { width: 90%; padding: 8px; background: #0f172a; border: 1px solid #334155; color: #fff; border-radius: 6px; margin: 10px 0; }
+        .btn-act { width: 95%; padding: 10px; border: none; border-radius: 6px; font-weight: bold; background: #3b82f6; color: #fff; }
     </style>
 </head>
 <body>
     <div class="card">
-        <h3>Confirm {{ action|title }}</h3>
-        <p style="font-size: 14px; color: #94a3b8;">{{ video[1] }}</p>
+        <h3>Confirm Action</h3>
+        <p>{{ video[1] }}</p>
         {% with messages = get_flashed_messages() %}
-            {% if messages %}<p style="color: #ef4444; font-size: 13px;">{{ messages[0] }}</p>{% endif %}
+            {% if messages %}<p style="color: #ef4444;">{{ messages[0] }}</p>{% endif %}
         {% endwith %}
         <form method="POST">
             {% if action == 'rename' %}
                 <input type="text" name="new_name" value="{{ video[1] }}" required>
             {% endif %}
-            <input type="password" name="password" placeholder="Admin Password" required>
+            <input type="password" name="password" placeholder="Admin Password" required><br>
             <button type="submit" class="btn-act">Confirm</button>
         </form>
         <br>
-        <a href="{{ url_for('home') }}" style="color: #64748b; font-size: 13px; text-decoration: none;">Cancel</a>
+        <a href="{{ url_for('home') }}" style="color: #94a3b8;">Cancel</a>
     </div>
 </body>
 </html>
@@ -393,11 +360,10 @@ def admin_panel():
 def get_upload_params():
     data = request.get_json() or {}
     if data.get("password") != ADMIN_PASSWORD:
-        return jsonify({"status": "error", "message": "Incorrect Admin Password!"}), 403
+        return jsonify({"status": "error", "message": "Incorrect Password!"}), 403
 
     timestamp = int(time.time())
-    eager_trans = "so_0,w_480,h_270,c_fill,f_jpg"
-    params_to_sign = {"timestamp": timestamp, "eager": eager_trans}
+    params_to_sign = {"timestamp": timestamp}
     signature = cloudinary.utils.api_sign_request(params_to_sign, CLOUDINARY_API_SECRET)
 
     return jsonify({
@@ -405,8 +371,7 @@ def get_upload_params():
         "timestamp": timestamp,
         "signature": signature,
         "api_key": CLOUDINARY_API_KEY,
-        "cloud_name": CLOUDINARY_CLOUD_NAME,
-        "eager": eager_trans
+        "cloud_name": CLOUDINARY_CLOUD_NAME
     })
 
 @app.route("/save_video", methods=["POST"])
@@ -418,8 +383,8 @@ def save_video():
     title = data.get("title", "").strip()
     public_id = data.get("public_id", "").strip()
     
-    download_url = f"https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/video/upload/fl_attachment/{public_id}.mp4"
-    thumb_url = f"https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/video/upload/so_0,w_480,h_270,c_fill,f_jpg/{public_id}.jpg"
+    download_url = f"https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/video/upload/{public_id}.mp4"
+    thumb_url = f"https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/video/upload/{public_id}.jpg"
 
     conn = sqlite3.connect(DB_NAME)
     cur = conn.cursor()
@@ -439,11 +404,9 @@ def save_firebase_video():
     download_url = data.get("download_url", "").strip()
     public_id = data.get("public_id", "").strip()
 
-    thumb_url = ""
-
     conn = sqlite3.connect(DB_NAME)
     cur = conn.cursor()
-    cur.execute("INSERT OR REPLACE INTO videos (title, download_url, public_id, storage_type, thumb_url) VALUES (?, ?, ?, 'firebase', ?)", (title, download_url, public_id, thumb_url))
+    cur.execute("INSERT OR REPLACE INTO videos (title, download_url, public_id, storage_type, thumb_url) VALUES (?, ?, ?, 'firebase', '')", (title, download_url, public_id))
     conn.commit()
     conn.close()
 
