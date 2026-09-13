@@ -10,12 +10,10 @@ import cloudinary.utils
 # ================= CREDENTIALS CONFIGURATION =================
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "809047")
 
-# Cloudinary Setup
 CLOUDINARY_CLOUD_NAME = os.environ.get("CLOUDINARY_CLOUD_NAME", "dmzqlfd9s")
 CLOUDINARY_API_KEY = os.environ.get("CLOUDINARY_API_KEY", "884785368881513")
 CLOUDINARY_API_SECRET = os.environ.get("CLOUDINARY_API_SECRET", "t2JjczLpiFQw2OnW_vbvjbdLwEg")
 
-# Firebase Config (Environment variables ya direct values)
 FIREBASE_API_KEY = os.environ.get("FIREBASE_API_KEY", "YOUR_FIREBASE_API_KEY")
 FIREBASE_AUTH_DOMAIN = os.environ.get("FIREBASE_AUTH_DOMAIN", "your-app.firebaseapp.com")
 FIREBASE_PROJECT_ID = os.environ.get("FIREBASE_PROJECT_ID", "your-app-id")
@@ -34,7 +32,7 @@ app = Flask(__name__)
 app.secret_key = "jiobharat_opera_super_secret_key"
 DB_NAME = "videos.db"
 
-# ================= DATABASE SETUP & AUTO-SYNC =================
+# ================= DATABASE SETUP =================
 def init_db():
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
@@ -66,9 +64,9 @@ def sync_from_cloudinary():
         
         for item in resources:
             pub_id = item.get("public_id")
-            dl_url = f"https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/video/upload/w_360,c_scale,q_auto:eco,fl_attachment/{pub_id}.mp4"
-            thumb_url = f"https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/video/upload/w_320,h_180,c_fill,so_0,q_auto:eco/{pub_id}.jpg"
-            clean_title = pub_id.split("/")[-1].replace("_", " ")
+            dl_url = f"https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/video/upload/fl_attachment/{pub_id}.mp4"
+            thumb_url = f"https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/video/upload/so_0,w_480,h_270,c_fill,f_jpg/{pub_id}.jpg"
+            clean_title = pub_id.split("/")[-1].replace("_", " ").replace("-", " ")
             
             cur.execute("""
                 INSERT OR IGNORE INTO videos (title, download_url, public_id, storage_type, thumb_url)
@@ -83,69 +81,83 @@ def sync_from_cloudinary():
 init_db()
 sync_from_cloudinary()
 
-# ================= HTML TEMPLATES =================
+# ================= UI TEMPLATES =================
 
 HOME_PAGE = """
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+    <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Video Portal</title>
+    <title>StreamHub - Video Portal</title>
     <style>
-        body { font-family: Arial, sans-serif; background: #e5e5e5; margin: 0; padding: 8px; }
-        .top-bar { text-align: right; margin-bottom: 12px; }
-        .admin-link { background: #222; color: #fff; padding: 6px 12px; text-decoration: none; font-size: 13px; font-weight: bold; border-radius: 3px; }
-        .sync-link { background: #007bff; color: #fff; padding: 6px 10px; text-decoration: none; font-size: 13px; font-weight: bold; border-radius: 3px; margin-right: 5px; }
-        .search-container { background: #fff; border: 1px solid #bbb; padding: 10px; margin-bottom: 12px; text-align: center; }
-        .search-input { width: 65%; padding: 6px; font-size: 14px; border: 1px solid #999; }
-        .search-btn { padding: 6px 12px; font-size: 14px; background: #0b5ed7; color: #fff; border: 1px solid #0a58ca; font-weight: bold; }
-        .video-card { background: #fff; border: 1px solid #ccc; padding: 10px; margin-bottom: 12px; text-align: center; }
-        .thumb-img { width: 100%; max-height: 180px; object-fit: cover; background: #000; display: block; margin-bottom: 8px; border: 1px solid #eee; }
-        .video-title { font-size: 15px; font-weight: bold; margin-bottom: 8px; color: #111; word-wrap: break-word; text-align: left; }
-        .btn-download { display: block; background: #198754; color: #ffffff; text-align: center; padding: 9px 0; text-decoration: none; font-size: 15px; font-weight: bold; margin-bottom: 6px; }
-        .action-row { width: 100%; }
-        .btn-action { display: inline-block; width: 48%; text-align: center; padding: 6px 0; text-decoration: none; font-size: 13px; font-weight: bold; }
-        .btn-rename { background: #ffc107; color: #000; float: left; }
-        .btn-delete { background: #dc3545; color: #fff; float: right; }
-        .clear { clear: both; }
-        .pagination { text-align: center; margin: 15px 0; }
-        .page-btn { display: inline-block; padding: 6px 15px; background: #333; color: #fff; text-decoration: none; font-size: 13px; margin: 0 4px; }
+        :root { --bg: #0f172a; --card: #1e293b; --text: #f8fafc; --accent: #3b82f6; --danger: #ef4444; --warning: #f59e0b; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 12px; }
+        .nav-bar { display: flex; justify-content: space-between; align-items: center; background: var(--card); padding: 12px 16px; border-radius: 12px; margin-bottom: 16px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+        .logo { font-size: 18px; font-weight: 800; color: #60a5fa; text-decoration: none; }
+        .nav-btns { display: flex; gap: 8px; }
+        .btn { padding: 8px 14px; font-size: 13px; font-weight: 600; border-radius: 8px; text-decoration: none; border: none; cursor: pointer; transition: 0.2s ease; display: inline-flex; align-items: center; justify-content: center; }
+        .btn-primary { background: var(--accent); color: #fff; }
+        .btn-sync { background: #334155; color: #cbd5e1; }
+        .btn-rename { background: var(--warning); color: #000; flex: 1; }
+        .btn-delete { background: var(--danger); color: #fff; flex: 1; }
+        .btn-download { background: #10b981; color: #fff; width: 100%; font-size: 14px; margin-bottom: 8px; }
+        .search-box { display: flex; gap: 8px; margin-bottom: 20px; }
+        .search-input { flex: 1; padding: 10px 14px; background: var(--card); border: 1px solid #334155; color: #fff; border-radius: 8px; font-size: 14px; outline: none; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
+        .card { background: var(--card); border-radius: 12px; overflow: hidden; border: 1px solid #334155; display: flex; flex-direction: column; }
+        .thumb-wrapper { position: relative; width: 100%; aspect-ratio: 16/9; background: #000; overflow: hidden; }
+        .thumb-img { width: 100%; height: 100%; object-fit: cover; }
+        .card-body { padding: 12px; display: flex; flex-direction: column; flex: 1; }
+        .card-title { font-size: 14px; font-weight: 600; margin-bottom: 12px; line-height: 1.4; color: #f1f5f9; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; height: 38px; }
+        .actions { display: flex; gap: 8px; margin-top: auto; }
+        .pagination { display: flex; justify-content: center; gap: 10px; margin-top: 24px; }
     </style>
 </head>
 <body>
-    <div class="top-bar">
-        <a href="{{ url_for('sync_videos') }}" class="sync-link">&#8635; Refresh Videos</a>
-        <a href="{{ url_for('admin_panel') }}" class="admin-link">Admin Upload</a>
-    </div>
-
-    <div class="search-container">
-        <form method="GET" action="{{ url_for('home') }}">
-            <input type="text" name="q" value="{{ query }}" placeholder="Search here..." class="search-input">
-            <input type="submit" value="Search" class="search-btn">
-        </form>
-    </div>
-
-    {% for vid in videos %}
-    <div class="video-card">
-        <img src="{{ vid[4] if vid[4] else 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=320&h=180&fit=crop' }}" alt="Thumbnail" class="thumb-img">
-        <div class="video-title">{{ vid[1] }}</div>
-        <a href="{{ vid[2] }}" class="btn-download" target="_blank">DOWNLOAD</a>
-        <div class="action-row">
-            <a href="{{ url_for('rename_video', video_id=vid[0]) }}" class="btn-action btn-rename">Rename</a>
-            <a href="{{ url_for('delete_video', video_id=vid[0]) }}" class="btn-action btn-delete">Delete</a>
-            <div class="clear"></div>
+    <div class="nav-bar">
+        <a href="{{ url_for('home') }}" class="logo">▶ StreamHub</a>
+        <div class="nav-btns">
+            <a href="{{ url_for('sync_videos') }}" class="btn btn-sync">Sync</a>
+            <a href="{{ url_for('admin_panel') }}" class="btn btn-primary">+ Upload</a>
         </div>
     </div>
-    {% else %}
-    <p style="text-align: center; color: #666;">No videos found.</p>
-    {% endfor %}
+
+    <form method="GET" action="{{ url_for('home') }}" class="search-box">
+        <input type="text" name="q" value="{{ query }}" placeholder="Search videos..." class="search-input">
+        <button type="submit" class="btn btn-primary">Search</button>
+    </form>
+
+    <div class="grid">
+        {% for vid in videos %}
+        <div class="card">
+            <div class="thumb-wrapper">
+                {% if vid[4] and vid[4] != '' %}
+                    <img src="{{ vid[4] }}" class="thumb-img" onerror="this.onerror=null; this.src='https://via.placeholder.com/480x270/0f172a/60a5fa?text=Video+File';">
+                {% else %}
+                    <div style="width:100%; height:100%; display:flex; align-items:center; justify-content:center; background:#0284c7; color:#fff; font-weight:bold;">▶ MP4 Video</div>
+                {% endif %}
+            </div>
+            <div class="card-body">
+                <div class="card-title">{{ vid[1] }}</div>
+                <a href="{{ vid[2] }}" class="btn btn-download" target="_blank" download>↓ Download MP4</a>
+                <div class="actions">
+                    <a href="{{ url_for('rename_video', video_id=vid[0]) }}" class="btn btn-rename">Rename</a>
+                    <a href="{{ url_for('delete_video', video_id=vid[0]) }}" class="btn btn-delete">Delete</a>
+                </div>
+            </div>
+        </div>
+        {% else %}
+        <p style="grid-column: 1/-1; text-align: center; color: #94a3b8; padding: 40px 0;">No videos found.</p>
+        {% endfor %}
+    </div>
 
     <div class="pagination">
         {% if page > 1 %}
-            <a href="{{ url_for('home', page=page-1, q=query) }}" class="page-btn">&laquo; Prev</a>
+            <a href="{{ url_for('home', page=page-1, q=query) }}" class="btn btn-sync">&laquo; Prev</a>
         {% endif %}
         {% if has_next %}
-            <a href="{{ url_for('home', page=page+1, q=query) }}" class="page-btn">Next &raquo;</a>
+            <a href="{{ url_for('home', page=page+1, q=query) }}" class="btn btn-sync">Next &raquo;</a>
         {% endif %}
     </div>
 </body>
@@ -154,63 +166,57 @@ HOME_PAGE = """
 
 ADMIN_PAGE = """
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+    <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Admin Upload Panel</title>
+    <title>Upload Center</title>
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-storage-compat.js"></script>
     <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #eef2f7; display: flex; justify-content: center; align-items: center; min-height: 90vh; margin: 0; }
-        .box { background: #ffffff; padding: 25px; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); width: 90%; max-width: 420px; }
-        h3 { text-align: center; color: #333; margin-top: 0; }
-        .field { margin-bottom: 14px; }
-        label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 5px; color: #444; }
-        input[type="text"], input[type="password"], input[type="file"] { width: 100%; padding: 9px; box-sizing: border-box; font-size: 14px; border: 1px solid #ccc; border-radius: 4px; }
-        .btn-ok { width: 100%; background: #007bff; color: #fff; padding: 12px; border: none; border-radius: 4px; font-size: 16px; font-weight: bold; cursor: pointer; }
-        .btn-ok:disabled { background: #86b7fe; cursor: not-allowed; }
-        .back { display: block; text-align: center; margin-top: 15px; text-decoration: none; color: #666; font-size: 13px; }
-        .progress-box { display: none; margin-top: 18px; background: #f8f9fa; border: 1px solid #ddd; padding: 12px; border-radius: 6px; }
-        .progress-header { display: flex; justify-content: space-between; font-size: 13px; font-weight: bold; margin-bottom: 6px; color: #333; }
-        .progress-track { width: 100%; height: 18px; background: #e9ecef; border-radius: 10px; overflow: hidden; }
-        .progress-fill { width: 0%; height: 100%; background: linear-gradient(90deg, #28a745, #20c997); transition: width 0.15s ease-out; }
-        .status-text { font-size: 12px; color: #555; text-align: center; margin-top: 6px; }
-        .alert-msg { display: none; padding: 10px; margin-bottom: 12px; font-size: 13px; border-radius: 4px; text-align: center; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0f172a; color: #fff; margin: 0; padding: 16px; display: flex; justify-content: center; align-items: center; min-height: 90vh; }
+        .box { background: #1e293b; border-radius: 12px; padding: 24px; width: 100%; max-width: 440px; border: 1px solid #334155; }
+        h3 { margin-top: 0; color: #60a5fa; text-align: center; font-size: 20px; }
+        .field { margin-bottom: 16px; }
+        label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; color: #cbd5e1; }
+        input[type="text"], input[type="password"], input[type="file"] { width: 100%; padding: 10px; background: #0f172a; border: 1px solid #334155; border-radius: 8px; color: #fff; box-sizing: border-box; font-size: 14px; }
+        .btn-submit { width: 100%; padding: 12px; background: #3b82f6; color: #fff; border: none; border-radius: 8px; font-weight: bold; font-size: 15px; cursor: pointer; }
+        .progress-box { display: none; margin-top: 16px; background: #0f172a; padding: 12px; border-radius: 8px; border: 1px solid #334155; }
+        .track { background: #334155; height: 10px; border-radius: 5px; overflow: hidden; margin-top: 8px; }
+        .fill { background: #10b981; height: 100%; width: 0%; transition: width 0.2s; }
+        .alert { display: none; padding: 10px; border-radius: 8px; font-size: 13px; margin-bottom: 12px; text-align: center; }
+        .back-link { display: block; text-align: center; color: #94a3b8; text-decoration: none; font-size: 13px; margin-top: 16px; }
     </style>
 </head>
 <body>
     <div class="box">
-        <h3>Upload Video Panel</h3>
-        <div id="alert-msg" class="alert-msg"></div>
-
-        <form id="uploadForm">
+        <h3>Upload Media</h3>
+        <div id="alert" class="alert"></div>
+        <form id="upForm">
             <div class="field">
-                <label>Choose Video File (Internal Storage):</label>
-                <input type="file" id="video_file" accept="video/*" required>
+                <label>Select Video</label>
+                <input type="file" id="file" accept="video/*" required>
             </div>
             <div class="field">
-                <label>Video Name / Title:</label>
-                <input type="text" id="video_name" placeholder="Enter video title" required>
+                <label>Video Title</label>
+                <input type="text" id="title" placeholder="My Awesome Video" required>
             </div>
             <div class="field">
-                <label>Admin Password:</label>
-                <input type="password" id="admin_pass" placeholder="Enter Admin Password" required>
+                <label>Admin Password</label>
+                <input type="password" id="pass" placeholder="••••••••" required>
             </div>
-            <input type="button" id="submitBtn" value="OK" class="btn-ok" onclick="startUpload()">
+            <button type="button" id="subBtn" class="btn-submit" onclick="processUpload()">Start Upload</button>
         </form>
 
-        <div id="progressBox" class="progress-box">
-            <div class="progress-header">
-                <span id="procLabel">Uploading...</span>
-                <span id="percentText">0%</span>
+        <div id="pBox" class="progress-box">
+            <div style="display:flex; justify-content:space-between; font-size:12px;">
+                <span id="stText">Uploading...</span>
+                <span id="pText">0%</span>
             </div>
-            <div class="progress-track">
-                <div id="progressFill" class="progress-fill"></div>
-            </div>
-            <div id="statusText" class="status-text">Starting upload...</div>
+            <div class="track"><div id="pFill" class="fill"></div></div>
         </div>
 
-        <a href="{{ url_for('home') }}" class="back">&larr; Back to Videos</a>
+        <a href="{{ url_for('home') }}" class="back-link">&larr; Back to Portal</a>
     </div>
 
     <script>
@@ -223,148 +229,82 @@ ADMIN_PAGE = """
             appId: "{{ fb_config.appId }}"
         };
 
-        if (!firebase.apps.length) {
-            firebase.initializeApp(firebaseConfig);
-        }
+        if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
 
-        async function startUpload() {
-            const fileInput = document.getElementById('video_file');
-            const nameInput = document.getElementById('video_name');
-            const passInput = document.getElementById('admin_pass');
-            const alertBox = document.getElementById('alert-msg');
-            const progressBox = document.getElementById('progressBox');
-            const progressFill = document.getElementById('progressFill');
-            const percentText = document.getElementById('percentText');
-            const statusText = document.getElementById('statusText');
-            const submitBtn = document.getElementById('submitBtn');
+        async function processUpload() {
+            const file = document.getElementById('file').files[0];
+            const title = document.getElementById('title').value.trim();
+            const pass = document.getElementById('pass').value.trim();
+            const alert = document.getElementById('alert');
+            const pBox = document.getElementById('pBox');
+            const pFill = document.getElementById('pFill');
+            const pText = document.getElementById('pText');
+            const stText = document.getElementById('stText');
 
-            if (!fileInput.files.length || !nameInput.value.trim() || !passInput.value.trim()) {
-                alertBox.style.display = 'block';
-                alertBox.style.background = '#f8d7da';
-                alertBox.style.color = '#721c24';
-                alertBox.innerText = 'Please select a file and fill all fields!';
-                return;
-            }
+            if (!file || !title || !pass) return;
 
-            const file = fileInput.files[0];
-            const videoTitle = nameInput.value.trim();
-            const password = passInput.value.trim();
-            const isLarge = file.size > (95 * 1024 * 1024);
+            pBox.style.display = 'block';
+            alert.style.display = 'none';
 
-            submitBtn.disabled = true;
-            alertBox.style.display = 'none';
-            progressBox.style.display = 'block';
-            progressFill.style.width = '0%';
-            percentText.innerText = '0%';
+            if (file.size > 95 * 1024 * 1024) {
+                stText.innerText = "Direct Firebase Upload (>95MB)...";
+                const ref = firebase.storage().ref('videos/' + Date.now() + '_' + file.name);
+                const task = ref.put(file);
 
-            try {
-                if (isLarge) {
-                    statusText.innerText = 'Uploading to Firebase (>95MB)...';
-                    const storageRef = firebase.storage().ref('videos/' + Date.now() + '_' + file.name);
-                    const uploadTask = storageRef.put(file);
+                task.on('state_changed', 
+                    s => {
+                        let pct = Math.round((s.bytesTransferred / s.totalBytes) * 100);
+                        pFill.style.width = pct + '%';
+                        pText.innerText = pct + '%';
+                    },
+                    e => { alert.innerText = e.message; alert.style.display = 'block'; },
+                    async () => {
+                        let url = await task.snapshot.ref.getDownloadURL();
+                        let res = await fetch('{{ url_for("save_firebase_video") }}', {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({ password: pass, title: title, download_url: url, public_id: ref.fullPath })
+                        });
+                        let d = await res.json();
+                        if(d.status === 'success') location.href = '{{ url_for("home") }}';
+                    }
+                );
+            } else {
+                stText.innerText = "Cloudinary Upload...";
+                let signRes = await fetch('{{ url_for("get_upload_params") }}', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ password: pass })
+                });
+                let sign = await signRes.json();
+                if(sign.status !== 'success') { alert.innerText = sign.message; alert.style.display = 'block'; return; }
 
-                    uploadTask.on('state_changed', 
-                        (snapshot) => {
-                            const percent = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
-                            progressFill.style.width = percent + '%';
-                            percentText.innerText = percent + '%';
-                            const loadedMB = (snapshot.bytesTransferred / (1024 * 1024)).toFixed(2);
-                            const totalMB = (snapshot.totalBytes / (1024 * 1024)).toFixed(2);
-                            statusText.innerText = `Uploading: ${loadedMB} MB / ${totalMB} MB`;
-                        }, 
-                        (error) => { throw new Error(error.message); }, 
-                        async () => {
-                            const downloadURL = await uploadTask.snapshot.ref.getDownloadURL();
-                            const saveRes = await fetch('{{ url_for("save_firebase_video") }}', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({
-                                    password: password,
-                                    title: videoTitle,
-                                    download_url: downloadURL,
-                                    public_id: storageRef.fullPath
-                                })
-                            });
-                            const saveData = await saveRes.json();
-                            if (saveData.status === 'success') {
-                                alertBox.style.display = 'block';
-                                alertBox.style.background = '#d1e7dd';
-                                alertBox.style.color = '#0f5132';
-                                alertBox.innerText = 'Large Video Saved Successfully via Firebase!';
-                                document.getElementById('uploadForm').reset();
-                            } else {
-                                throw new Error(saveData.message);
-                            }
-                            submitBtn.disabled = false;
-                        }
-                    );
+                let fd = new FormData();
+                fd.append('file', file);
+                fd.append('api_key', sign.api_key);
+                fd.append('timestamp', sign.timestamp);
+                fd.append('signature', sign.signature);
+                fd.append('eager', sign.eager);
 
-                } else {
-                    statusText.innerText = 'Authenticating Cloudinary...';
-                    const signRes = await fetch('{{ url_for("get_upload_params") }}', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ password: password })
-                    });
-                    const signData = await signRes.json();
-
-                    if (signData.status !== 'success') throw new Error(signData.message || 'Auth failed!');
-
-                    const formData = new FormData();
-                    formData.append('file', file);
-                    formData.append('api_key', signData.api_key);
-                    formData.append('timestamp', signData.timestamp);
-                    formData.append('signature', signData.signature);
-                    formData.append('eager', signData.eager);
-
-                    const xhr = new XMLHttpRequest();
-                    xhr.open('POST', `https://api.cloudinary.com/v1_1/${signData.cloud_name}/video/upload`, true);
-
-                    xhr.upload.onprogress = function(e) {
-                        if (e.lengthComputable) {
-                            const percent = Math.round((e.loaded / e.total) * 100);
-                            progressFill.style.width = percent + '%';
-                            percentText.innerText = percent + '%';
-                            statusText.innerText = `Uploading: ${(e.loaded / 1048576).toFixed(2)} MB / ${(e.total / 1048576).toFixed(2)} MB`;
-                        }
-                    };
-
-                    xhr.onload = async function() {
-                        if (xhr.status === 200) {
-                            const cloudRes = JSON.parse(xhr.responseText);
-                            const saveRes = await fetch('{{ url_for("save_video") }}', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({
-                                    password: password,
-                                    title: videoTitle,
-                                    public_id: cloudRes.public_id
-                                })
-                            });
-                            const saveData = await saveRes.json();
-                            if (saveData.status === 'success') {
-                                alertBox.style.display = 'block';
-                                alertBox.style.background = '#d1e7dd';
-                                alertBox.style.color = '#0f5132';
-                                alertBox.innerText = 'Video Uploaded Successfully!';
-                                document.getElementById('uploadForm').reset();
-                            } else {
-                                throw new Error(saveData.message);
-                            }
-                        } else {
-                            throw new Error('Cloudinary upload failed!');
-                        }
-                        submitBtn.disabled = false;
-                    };
-                    xhr.send(formData);
-                }
-            } catch (err) {
-                submitBtn.disabled = false;
-                alertBox.style.display = 'block';
-                alertBox.style.background = '#f8d7da';
-                alertBox.style.color = '#721c24';
-                alertBox.innerText = err.message;
-                progressBox.style.display = 'none';
+                let xhr = new XMLHttpRequest();
+                xhr.open('POST', `https://api.cloudinary.com/v1_1/${sign.cloud_name}/video/upload`, true);
+                xhr.upload.onprogress = e => {
+                    let pct = Math.round((e.loaded / e.total) * 100);
+                    pFill.style.width = pct + '%';
+                    pText.innerText = pct + '%';
+                };
+                xhr.onload = async () => {
+                    if(xhr.status === 200) {
+                        let cData = JSON.parse(xhr.responseText);
+                        await fetch('{{ url_for("save_video") }}', {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({ password: pass, title: title, public_id: cData.public_id })
+                        });
+                        location.href = '{{ url_for("home") }}';
+                    }
+                };
+                xhr.send(fd);
             }
         }
     </script>
@@ -374,64 +314,55 @@ ADMIN_PAGE = """
 
 CONFIRM_PAGE = """
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+    <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ action|title }} Video</title>
+    <title>{{ action|title }} Action</title>
     <style>
-        body { font-family: Arial, sans-serif; background: #f7f7f7; padding: 15px; text-align: center; }
-        .card { background: #fff; border: 1px solid #ccc; padding: 15px; max-width: 320px; margin: 0 auto; }
-        input { width: 90%; padding: 8px; margin: 8px 0; box-sizing: border-box; }
-        .btn-sub { background: #333; color: #fff; border: none; font-size: 15px; font-weight: bold; padding: 8px 0; width: 90%; cursor: pointer; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0f172a; color: #fff; padding: 20px; display: flex; justify-content: center; align-items: center; min-height: 80vh; }
+        .card { background: #1e293b; border-radius: 12px; padding: 20px; width: 100%; max-width: 340px; border: 1px solid #334155; text-align: center; }
+        input { width: 100%; padding: 10px; background: #0f172a; border: 1px solid #334155; color: #fff; border-radius: 8px; margin: 10px 0; box-sizing: border-box; }
+        .btn-act { width: 100%; padding: 10px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; background: #3b82f6; color: #fff; }
     </style>
 </head>
 <body>
     <div class="card">
-        <h3>{{ action|title }} Video</h3>
-        <p><strong>{{ video[1] }}</strong></p>
-        {% with messages = get_flashed_messages(with_categories=true) %}
-            {% if messages %}
-                {% for cat, msg in messages %}
-                    <p style="color: red; font-size: 13px;">{{ msg }}</p>
-                {% endfor %}
-            {% endif %}
+        <h3>Confirm {{ action|title }}</h3>
+        <p style="font-size: 14px; color: #94a3b8;">{{ video[1] }}</p>
+        {% with messages = get_flashed_messages() %}
+            {% if messages %}<p style="color: #ef4444; font-size: 13px;">{{ messages[0] }}</p>{% endif %}
         {% endwith %}
         <form method="POST">
             {% if action == 'rename' %}
                 <input type="text" name="new_name" value="{{ video[1] }}" required>
             {% endif %}
             <input type="password" name="password" placeholder="Admin Password" required>
-            <input type="submit" value="OK" class="btn-sub">
+            <button type="submit" class="btn-act">Confirm</button>
         </form>
         <br>
-        <a href="{{ url_for('home') }}" style="font-size: 13px; color: #555;">Cancel</a>
+        <a href="{{ url_for('home') }}" style="color: #64748b; font-size: 13px; text-decoration: none;">Cancel</a>
     </div>
 </body>
 </html>
 """
 
-# ================= APPLICATION ROUTES =================
+# ================= ROUTES =================
 
 @app.route("/")
 def home():
     query = request.args.get("q", "").strip()
     page = int(request.args.get("page", 1))
-    limit = 10
+    limit = 12
     offset = (page - 1) * limit
 
     conn = sqlite3.connect(DB_NAME)
     cur = conn.cursor()
 
     if query:
-        cur.execute(
-            "SELECT id, title, download_url, public_id, thumb_url, storage_type FROM videos WHERE title LIKE ? ORDER BY id DESC LIMIT ? OFFSET ?",
-            (f"%{query}%", limit + 1, offset)
-        )
+        cur.execute("SELECT id, title, download_url, public_id, thumb_url, storage_type FROM videos WHERE title LIKE ? ORDER BY id DESC LIMIT ? OFFSET ?", (f"%{query}%", limit + 1, offset))
     else:
-        cur.execute(
-            "SELECT id, title, download_url, public_id, thumb_url, storage_type FROM videos ORDER BY id DESC LIMIT ? OFFSET ?",
-            (limit + 1, offset)
-        )
+        cur.execute("SELECT id, title, download_url, public_id, thumb_url, storage_type FROM videos ORDER BY id DESC LIMIT ? OFFSET ?", (limit + 1, offset))
 
     rows = cur.fetchall()
     conn.close()
@@ -461,17 +392,12 @@ def admin_panel():
 @app.route("/get_upload_params", methods=["POST"])
 def get_upload_params():
     data = request.get_json() or {}
-    password = data.get("password", "")
-    if password != ADMIN_PASSWORD:
+    if data.get("password") != ADMIN_PASSWORD:
         return jsonify({"status": "error", "message": "Incorrect Admin Password!"}), 403
 
     timestamp = int(time.time())
-    eager_trans = "w_360,c_scale,q_auto:eco,fl_attachment"
-    
-    params_to_sign = {
-        "timestamp": timestamp,
-        "eager": eager_trans
-    }
+    eager_trans = "so_0,w_480,h_270,c_fill,f_jpg"
+    params_to_sign = {"timestamp": timestamp, "eager": eager_trans}
     signature = cloudinary.utils.api_sign_request(params_to_sign, CLOUDINARY_API_SECRET)
 
     return jsonify({
@@ -486,56 +412,42 @@ def get_upload_params():
 @app.route("/save_video", methods=["POST"])
 def save_video():
     data = request.get_json() or {}
-    password = data.get("password", "")
+    if data.get("password") != ADMIN_PASSWORD:
+        return jsonify({"status": "error", "message": "Invalid password"}), 403
+
     title = data.get("title", "").strip()
     public_id = data.get("public_id", "").strip()
-
-    if password != ADMIN_PASSWORD:
-        return jsonify({"status": "error", "message": "Incorrect Admin Password!"}), 403
-
-    if not title or not public_id:
-        return jsonify({"status": "error", "message": "Title and public_id required!"}), 400
-
-    download_url = f"https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/video/upload/w_360,c_scale,q_auto:eco,fl_attachment/{public_id}.mp4"
-    thumb_url = f"https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/video/upload/w_320,h_180,c_fill,so_0,q_auto:eco/{public_id}.jpg"
+    
+    download_url = f"https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/video/upload/fl_attachment/{public_id}.mp4"
+    thumb_url = f"https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/video/upload/so_0,w_480,h_270,c_fill,f_jpg/{public_id}.jpg"
 
     conn = sqlite3.connect(DB_NAME)
     cur = conn.cursor()
-    cur.execute(
-        "INSERT OR REPLACE INTO videos (title, download_url, public_id, storage_type, thumb_url) VALUES (?, ?, ?, 'cloudinary', ?)",
-        (title, download_url, public_id, thumb_url)
-    )
+    cur.execute("INSERT OR REPLACE INTO videos (title, download_url, public_id, storage_type, thumb_url) VALUES (?, ?, ?, 'cloudinary', ?)", (title, download_url, public_id, thumb_url))
     conn.commit()
     conn.close()
 
-    return jsonify({"status": "success", "message": "Video registered successfully!"})
+    return jsonify({"status": "success"})
 
 @app.route("/save_firebase_video", methods=["POST"])
 def save_firebase_video():
     data = request.get_json() or {}
-    password = data.get("password", "")
+    if data.get("password") != ADMIN_PASSWORD:
+        return jsonify({"status": "error", "message": "Invalid password"}), 403
+
     title = data.get("title", "").strip()
     download_url = data.get("download_url", "").strip()
     public_id = data.get("public_id", "").strip()
 
-    if password != ADMIN_PASSWORD:
-        return jsonify({"status": "error", "message": "Incorrect Admin Password!"}), 403
-
-    if not title or not download_url:
-        return jsonify({"status": "error", "message": "Title and URL required!"}), 400
-
-    thumb_url = "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=320&h=180&fit=crop"
+    thumb_url = ""
 
     conn = sqlite3.connect(DB_NAME)
     cur = conn.cursor()
-    cur.execute(
-        "INSERT OR REPLACE INTO videos (title, download_url, public_id, storage_type, thumb_url) VALUES (?, ?, ?, 'firebase', ?)",
-        (title, download_url, public_id, thumb_url)
-    )
+    cur.execute("INSERT OR REPLACE INTO videos (title, download_url, public_id, storage_type, thumb_url) VALUES (?, ?, ?, 'firebase', ?)", (title, download_url, public_id, thumb_url))
     conn.commit()
     conn.close()
 
-    return jsonify({"status": "success", "message": "Firebase video saved!"})
+    return jsonify({"status": "success"})
 
 @app.route("/rename/<int:video_id>", methods=["GET", "POST"])
 def rename_video(video_id):
@@ -545,17 +457,14 @@ def rename_video(video_id):
     video = cur.fetchone()
     conn.close()
 
-    if not video:
-        return redirect(url_for("home"))
+    if not video: return redirect(url_for("home"))
 
     if request.method == "POST":
-        new_name = request.form.get("new_name", "").strip()
-        password = request.form.get("password", "").strip()
-
-        if password != ADMIN_PASSWORD:
-            flash("Invalid Password!", "err")
+        if request.form.get("password") != ADMIN_PASSWORD:
+            flash("Invalid Password!")
             return render_template_string(CONFIRM_PAGE, video=video, action="rename")
 
+        new_name = request.form.get("new_name", "").strip()
         conn = sqlite3.connect(DB_NAME)
         cur = conn.cursor()
         cur.execute("UPDATE videos SET title = ? WHERE id = ?", (new_name, video_id))
@@ -573,21 +482,16 @@ def delete_video(video_id):
     video = cur.fetchone()
     conn.close()
 
-    if not video:
-        return redirect(url_for("home"))
+    if not video: return redirect(url_for("home"))
 
     if request.method == "POST":
-        password = request.form.get("password", "").strip()
-
-        if password != ADMIN_PASSWORD:
-            flash("Invalid Password!", "err")
+        if request.form.get("password") != ADMIN_PASSWORD:
+            flash("Invalid Password!")
             return render_template_string(CONFIRM_PAGE, video=video, action="delete")
 
         if video[3] == "cloudinary":
-            try:
-                cloudinary.uploader.destroy(video[2], resource_type="video")
-            except Exception as e:
-                print(f"Cloudinary destroy error: {e}")
+            try: cloudinary.uploader.destroy(video[2], resource_type="video")
+            except Exception as e: print(e)
 
         conn = sqlite3.connect(DB_NAME)
         cur = conn.cursor()
@@ -598,8 +502,6 @@ def delete_video(video_id):
 
     return render_template_string(CONFIRM_PAGE, video=video, action="delete")
 
-# ================= RENDER ENTRY POINT =================
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
-
